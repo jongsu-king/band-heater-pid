@@ -23,11 +23,11 @@
 포트를 열 때 나노가 리셋된다(아두이노의 정상 동작). 운전 중에 켜면 히터가 꺼지므로
 이 프로그램을 먼저 켜고 나서 운전을 시작한다.
 """
-import argparse, atexit, base64, datetime, json, os, re, secrets, signal, subprocess, sys, threading, time, webbrowser
+import argparse, atexit, base64, datetime, glob, html, json, os, re, secrets, signal, subprocess, sys, threading, time, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-VERSION = '1.2'
+VERSION = '1.3'
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = getattr(sys, '_MEIPASS', HERE)    # 응용프로그램으로 묶였을 때는 그 안의 자원 폴더
 USB_VID = {0x0403, 0x1A86, 0x10C4, 0x2341, 0x2A03, 0x067B}        # FTDI, CH340, CP210x, Arduino, Prolific
@@ -135,11 +135,13 @@ class Hub:
         self.csv = self.evf = self.raw = None
         self.last_port = ''
         # PC 쪽 설정: 온도 프로그램(승온·유지 단계)과 PC 경보. 기록 폴더의 설정.json 에 남는다
-        self.cfg = dict(steps=[dict(target=80.0, rate=5.0, hold=10.0)], tol=1.0, end_stop=True,
-                        hi=[None, None, None, None], spread=None, auto_stop=True)
+        self.cfg = dict(steps=[dict(target=80.0, rate=5.0, hold=10.0)], cycles=1, tol=1.0, end_stop=True,
+                        hi=[None, None, None, None], spread=None, auto_stop=True, heater_w=400.0, presets={})
         self.prog = dict(on=False, step=0, n=0, phase='', sp=None, target=None, left=None)
         self.alarm = dict(active=[], latched='', n=0)
         self._pstop = threading.Event()
+        self._tok, self._tok_at, self._dropped, self._drop_at = 10.0, time.monotonic(), 0, 0.0
+        self._tok2, self._tok2_at = 50.0, time.monotonic()
         try:
             with open(os.path.join(self.base_dir, '설정.json'), encoding='utf-8') as f:
                 self._merge_cfg(json.load(f))
@@ -155,13 +157,26 @@ class Hub:
             return None if x is None else min(hi, max(lo, x))
         if not isinstance(d, dict):
             return
-        if isinstance(d.get('steps'), list):
-            steps = []
-            for st in d['steps'][:20]:
+        def steps_of(v):
+            out = []
+            for st in (v if isinstance(v, list) else [])[:20]:
                 if isinstance(st, dict) and f(st.get('target'), 0, 300) is not None:
-                    steps.append(dict(target=f(st.get('target'), 0, 300), rate=f(st.get('rate'), 0, 60) or 0.0,
-                                      hold=f(st.get('hold'), 0, 6000) or 0.0))
-            c['steps'] = steps
+                    out.append(dict(target=f(st.get('target'), 0, 300), rate=f(st.get('rate'), 0, 60) or 0.0,
+                                    hold=f(st.get('hold'), 0, 6000) or 0.0))
+            return out
+        if isinstance(d.get('steps'), list):
+            c['steps'] = steps_of(d['steps'])
+        if 'cycles' in d:
+            c['cycles'] = int(f(d['cycles'], 1, 100) or 1)
+        if 'heater_w' in d:
+            c['heater_w'] = f(d['heater_w'], 1, 10000) or 400.0
+        if isinstance(d.get('presets'), dict):                     # 이름 붙인 프로그램 묶음. 통째로 바꿔 넣는다
+            pre = {}
+            for k, v in list(d['presets'].items())[:30]:
+                if isinstance(v, dict) and clean(k, 30):
+                    pre[clean(k, 30)] = dict(steps=steps_of(v.get('steps')), cycles=int(f(v.get('cycles'), 1, 100) or 1),
+                                             tol=f(v.get('tol'), 0.1, 20) or 1.0, end_stop=bool(v.get('end_stop', True)))
+            c['presets'] = pre
         if 'tol' in d:
             c['tol'] = f(d['tol'], 0.1, 20) or 1.0
         if 'end_stop' in d:
@@ -237,13 +252,14 @@ class Hub:
             if s['mode'] == 'TUNE':
                 return False, '오토튜닝 중입니다'
             steps = [dict(x) for x in self.cfg['steps']]
+            cycles = self.cfg['cycles']
             if not steps:
                 return False, '단계가 없습니다'
             if self._last_pv() is None:
                 return False, '현재 온도를 읽지 못했습니다'
             self._pstop = threading.Event()
-            self.prog.update(on=True, step=0, n=len(steps), phase='start', sp=None, target=None, left=None)
-            args = (steps, self.link, self._pstop, self.cfg['tol'], self.cfg['end_stop'])
+            self.prog.update(on=True, step=0, n=len(steps), cycle=1, cycles=cycles, phase='start', sp=None, target=None, left=None)
+            args = (steps, cycles, self.link, self._pstop, self.cfg['tol'], self.cfg['end_stop'])
         threading.Thread(target=self._prog_run, args=args, daemon=True).start()
         return True, '프로그램 운전 시작'
 
@@ -254,7 +270,7 @@ class Hub:
         self.send('stop', who='프로그램')
         return True, '프로그램 중지, 히터 정지'
 
-    def _prog_run(self, steps, link, stop, tol, end_stop):
+    def _prog_run(self, steps, cycles, link, stop, tol, end_stop):
         volatile = fw_tuple(self.state['version']) >= (1, 4)       # v1.4부터 spt: EEPROM에 쓰지 않고 목표를 바꿈
         cmd, q = ('spt', 0.1) if volatile else ('sp', 1.0)
         t0 = time.monotonic()
@@ -295,7 +311,7 @@ class Hub:
                 if self.csv:
                     self._event('prog', text)
         try:
-            ev('프로그램 시작: %d단계, 목표 변경 명령 %s%s' % (len(steps), cmd, '' if volatile else ' (펌웨어 v1.4 미만: 1 °C 단위, 바꿀 때마다 보드에 저장됨)'))
+            ev('프로그램 시작: %d단계 × %d회, 목표 변경 명령 %s%s' % (len(steps), cycles, cmd, '' if volatile else ' (펌웨어 v1.4 미만: 1 °C 단위, 바꿀 때마다 보드에 저장됨)'))
             cur = pv()
             if cur is None:
                 why[0] = '중단: 현재 온도 없음'
@@ -309,9 +325,10 @@ class Hub:
                 if self.state['mode'] != 'RUN':
                     why[0] = why[0] or '중단: 운전을 시작하지 못함'
                     return
-            for i, st in enumerate(steps, 1):
+            for cyc, i, st in [(c, i, st) for c in range(1, cycles + 1) for i, st in enumerate(steps, 1)]:
                 target, rate, hold = st['target'], st['rate'], st['hold']
-                ev('%d단계: %.1f → %.1f °C, %s, 유지 %g분' % (i, cur, target, ('%g °C/분' % rate) if rate > 0 else '바로', hold))
+                status(cycle=cyc)
+                ev('%s%d단계: %.1f → %.1f °C, %s, 유지 %g분' % ('%d회째 ' % cyc if cycles > 1 else '', i, cur, target, ('%g °C/분' % rate) if rate > 0 else '바로', hold))
                 ts = clock()
                 if rate > 0 and abs(target - cur) > 1e-6:
                     dur, sign = abs(target - cur) / rate * 60.0, (1 if target > cur else -1)
@@ -355,14 +372,15 @@ class Hub:
             status(on=False, phase='', left=None)
 
     # ---------- 구간 내보내기, 통계 저장 ----------
-    def export_part(self, t0, t1):
+    def export_part(self, t0, t1, rid=None):
         t0, t1 = num(t0), num(t1)
         if t0 is None or t1 is None or t1 <= t0:
             return False, '구간이 잘못됨'
         with self.lock:
             if not self.csv:
                 return False, '기록 파일이 없음'
-            src, dst = self.base + '.csv', '%s_part_%d-%ds.csv' % (self.base, round(t0), round(t1))
+            base = self._base_for(rid)
+            src, dst = base + '.csv', '%s_part_%d-%ds.csv' % (base, round(t0), round(t1))
         n = 0
         with open(src, encoding='utf-8') as f, open(dst, 'w', encoding='utf-8', newline='') as g:
             g.write(f.readline())
@@ -383,7 +401,7 @@ class Hub:
         with self.lock:
             if not self.csv:
                 return False, '기록 파일이 없음'
-            path = self.base + '_stats.tsv'
+            path = self._base_for(d.get('rid')) + '_stats.tsv'
             new = not os.path.exists(path)
             with open(path, 'a', encoding='utf-8') as f:
                 if new:
@@ -394,6 +412,117 @@ class Hub:
                         f.write('%s\t%.2f\t%.2f\t%s\t%s\n' % (stamp_ms(), t0, t1, clean(r.get('ch'), 30),
                                 '\t'.join('' if v is None else '%.6g' % v for v in vals)))
         return True, '통계 저장: ' + os.path.basename(path)
+
+    # ---------- 지난 기록 ----------
+    def records(self):
+        out = []
+        with self.lock:
+            cur, folder = self.base, self.out_dir
+        for m in sorted(glob.glob(os.path.join(folder, 'heater_*_meta.json')), reverse=True)[:300]:
+            try:
+                with open(m, encoding='utf-8') as f:
+                    j = json.load(f)
+            except (OSError, ValueError):
+                continue
+            base = m[:-len('_meta.json')]
+            e = j.get('experiment') or {}
+            out.append(dict(id=os.path.basename(base), started=j.get('started'), ended=j.get('ended'), rows=j.get('rows'),
+                            name=e.get('name', ''), sample=e.get('sample', ''), current=base == cur,
+                            fw=(j.get('board') or {}).get('firmware', '')))
+        return out
+
+    def load_record(self, rid):
+        if not re.fullmatch(r'heater_[\w-]+', rid or ''):         # 폴더 밖 파일은 열지 않는다
+            return None
+        with self.lock:
+            base = os.path.join(self.out_dir, rid)
+            if base == self.base and self.csv:
+                self.csv.flush()
+        if not os.path.exists(base + '.csv'):
+            return None
+        rows, events, meta = [], [], dict(name='', sample='', memo='', labels=['', '', '', ''])
+        with open(base + '.csv', encoding='utf-8') as f:
+            next(f, None)
+            for line in f:
+                p = line.rstrip('\n').split(',')
+                t = num(p[1]) if len(p) >= 10 else None
+                if t is not None and len(rows) < MAX_ROWS:
+                    rows.append([t] + [num(x) for x in p[2:9]] + [MODE_CODE.get(p[9])])
+        try:
+            with open(base + '_events.txt', encoding='utf-8') as f:
+                for line in f:
+                    p = line.rstrip('\n').split('\t', 3)
+                    if len(p) == 4 and not line.startswith('#') and num(p[1]) is not None:
+                        events.append([num(p[1]), p[2], p[3]])
+        except OSError:
+            pass
+        try:
+            with open(base + '_meta.json', encoding='utf-8') as f:
+                j = json.load(f)
+            e, ch = j.get('experiment') or {}, j.get('channels') or {}
+            meta = dict(name=e.get('name', ''), sample=e.get('sample', ''), memo=e.get('memo', ''),
+                        labels=[ch.get('T%d' % i, '') for i in range(1, 5)])
+            started = j.get('started')
+        except (OSError, ValueError):
+            started = None
+        return dict(id=rid, rows=rows, events=events, meta=meta, started=started)
+
+    # ---------- 보고서: 실험 정보, 설정, 차트 그림, 화면이 계산한 표를 한 HTML 파일로 ----------
+    def save_report(self, d):
+        png = d.get('png')
+        if not isinstance(png, str) or not png.startswith('data:image/png;base64,'):
+            return False, '차트 그림이 없음'
+        try:
+            if base64.b64decode(png[22:], validate=True)[:8] != b'\x89PNG\r\n\x1a\n':
+                return False, '차트 그림이 잘못됨'
+        except ValueError:
+            return False, '차트 그림이 잘못됨'
+        E = lambda x: html.escape('' if x is None else str(x))
+        with self.lock:
+            if not self.csv:
+                return False, '기록 파일이 없음'
+            s, m, c, base = dict(self.state), dict(self.meta), json.loads(json.dumps(self.cfg)), self.base
+            started, events, nrows, port = self.started, list(self.events), self.nrows, self.last_port
+        tag = re.sub(r'[^0-9a-z_-]+', '', str(d.get('tag', '')))[:30] or 'all'
+
+        def table(title, head, rows):
+            h = '<h2>%s</h2><table>' % E(title)
+            if head:
+                h += '<tr>' + ''.join('<th>%s</th>' % E(x) for x in head) + '</tr>'
+            for r in rows:
+                h += '<tr>' + ''.join('<td>%s</td>' % E(x) for x in r) + '</tr>'
+            return h + '</table>'
+        g = lambda v: '-' if v is None else '%g' % v
+        parts = [table('실험', None, [['이름', m['name']], ['시료', m['sample']], ['메모', m['memo']],
+                                     ['기록 시작', started.strftime('%Y-%m-%d %H:%M:%S')], ['보고서 작성', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+                                     ['구간', d.get('range', '')], ['기록 줄 수', nrows]] +
+                       [['T%d 위치' % (i + 1), m['labels'][i]] for i in range(4) if m['labels'][i]]),
+                 table('보드와 설정', None, [['포트', port], ['펌웨어', s['version']], ['가상 보드', '예' if s['sim'] else '아니오'],
+                                          ['Kp / Ki / Kd', '%s / %s / %s' % (g(s['kp']), g(s['ki']), g(s['kd']))],
+                                          ['출력 한계 (%)', g(s['outmax'])], ['제어 기준', s['src']], ['목표 SP (°C)', g(s['sp'])],
+                                          ['PC 경보 상한 T1~T4 (°C)', ' / '.join(g(v) for v in c['hi'])], ['PC 경보 채널 간 차이 (°C)', g(c['spread'])],
+                                          ['히터 정격 (W), 전력 추정용', g(c['heater_w'])]]),
+                 '<h2>차트</h2><img alt="차트" src="%s">' % png]
+        for t in (d.get('tables') or [])[:8]:
+            if isinstance(t, dict) and isinstance(t.get('rows'), list):
+                parts.append(table(clean(t.get('title'), 60), [clean(x, 40) for x in (t.get('head') or [])][:12],
+                                   [[clean(x, 80) for x in r][:12] for r in t['rows'][:60] if isinstance(r, list)]))
+        parts.append(table('사건 기록', ['경과 (s)', '종류', '내용'], [['%.1f' % e[0], e[1], e[2]] for e in events[-300:]]))
+        parts.append(table('파일', None, [['데이터', os.path.basename(base) + '.csv'], ['사건', os.path.basename(base) + '_events.txt'],
+                                          ['원본 로그', os.path.basename(base) + '_raw.log'], ['메타데이터', os.path.basename(base) + '_meta.json']]))
+        doc = ('<!doctype html><html lang="ko"><meta charset="utf-8"><title>%s</title><style>'
+               'body{font:12px/1.4 "Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#000;max-width:900px;margin:24px auto;padding:0 16px}'
+               'h1{font-size:18px;border-bottom:2px solid #000;padding-bottom:4px}h2{font-size:13px;margin:18px 0 4px}'
+               'table{border-collapse:collapse;width:100%%}td,th{border:1px solid #888;padding:2px 6px;text-align:left;font-variant-numeric:tabular-nums}'
+               'th{background:#e6e6e6;font-weight:400}img{max-width:100%%;border:1px solid #888}@media print{body{margin:0}}'
+               '</style><h1>%s</h1>%s</html>') % (E('보고서 ' + (m['name'] or os.path.basename(base))), E(m['name'] or os.path.basename(base)), ''.join(parts))
+        path, n = '%s_report_%s.html' % (base, tag), 1
+        while os.path.exists(path):
+            n += 1
+            path = '%s_report_%s_%d.html' % (base, tag, n)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(doc)
+        return True, '보고서 저장: ' + os.path.basename(path)
 
     # ---------- 보드 연결을 고르고 바꾼다 ----------
     def start(self, sim=None, port='', new_file=True):
@@ -513,6 +642,11 @@ class Hub:
         self._event('set', '설정 SP=%g Kp=%g Ki=%g Kd=%g OUTMAX=%g SRC=%s MODE=%s' %
                     (s['sp'], s['kp'], s['ki'], s['kd'], s['outmax'], s['src'], s['mode']))
 
+    def note(self, kind, text):
+        with self.lock:
+            if self.csv:
+                self._event(kind, text)
+
     def mark(self, text):
         with self.lock:
             n = sum(1 for e in self.events if e[1] == 'mark') + 1
@@ -525,9 +659,28 @@ class Hub:
         with self.lock:
             if not self.csv or (who is not None and who is not self.link):
                 return
+            s = self.state
+            if kind == 'data' and not s['sim']:                    # 보드는 1초에 한 줄을 보낸다. 잠깐 몰려 오는 것(10줄)은 받고, 계속 쏟아지면 버린다
+                now = time.monotonic()
+                self._tok = min(10.0, self._tok + (now - self._tok_at) * 3.0)
+                self._tok_at = now
+                if self._tok < 1.0:
+                    self._dropped += 1
+                    self._drop_at = now
+                    return
+                self._tok -= 1.0
+                if self._dropped and now - self._drop_at > 2.0:    # 쏟아짐이 끝난 뒤 한 번만 적는다
+                    self._event('conn', '너무 빨리 들어온 값 줄 %d개를 버림 (보드는 1초에 한 줄)' % self._dropped)
+                    self._dropped = 0
+            if kind is None and not s['sim']:                      # 알 수 없는 줄도 쏟아지면 원본 로그에 다 쓰지 않는다 (몰려 온 50줄까지, 그 뒤 초당 20줄)
+                now = time.monotonic()
+                self._tok2 = min(50.0, self._tok2 + (now - self._tok2_at) * 20.0)
+                self._tok2_at = now
+                if self._tok2 < 1.0:
+                    return
+                self._tok2 -= 1.0
             if line.strip():
                 self.raw.write('%s\t%s\n' % (stamp_ms(), line))
-            s = self.state
             if kind == 'data':
                 t = self._now()
                 vals = [d.get(k) for k in KEYS]
@@ -607,7 +760,13 @@ class Hub:
                         alarm=dict(active=list(self.alarm['active']), latched=self.alarm['latched']),
                         spcmd='spt' if fw_tuple(self.state['version']) >= (1, 4) else 'sp')
 
-    def save_png(self, data, tag):
+    def _base_for(self, rid):
+        """rid 가 있으면 그 지난 기록의 파일 이름 머리, 없으면 지금 기록."""
+        if rid and re.fullmatch(r'heater_[\w-]+', str(rid)) and os.path.exists(os.path.join(self.out_dir, rid + '.csv')):
+            return os.path.join(self.out_dir, rid)
+        return self.base
+
+    def save_png(self, data, tag, rid=None):
         """화면이 보낸 그래프 그림(PNG)을 기록 파일 옆에 저장한다."""
         if not isinstance(data, str) or not data.startswith('data:image/png;base64,'):
             return False, '그림 형식이 아닙니다'
@@ -618,11 +777,12 @@ class Hub:
         if raw[:8] != b'\x89PNG\r\n\x1a\n':
             return False, '그림 형식이 아닙니다'
         with self.lock:
-            path = '%s_graph_%s.png' % (self.base, re.sub(r'[^0-9a-z_-]+', '', str(tag))[:30] or 'all')
+            base = self._base_for(rid)
+            path = '%s_graph_%s.png' % (base, re.sub(r'[^0-9a-z_-]+', '', str(tag))[:30] or 'all')
             n = 1
             while os.path.exists(path):
                 n += 1
-                path = '%s_graph_%s_%d.png' % (self.base, re.sub(r'[^0-9a-z_-]+', '', str(tag))[:30] or 'all', n)
+                path = '%s_graph_%s_%d.png' % (base, re.sub(r'[^0-9a-z_-]+', '', str(tag))[:30] or 'all', n)
         with open(path, 'wb') as f:
             f.write(raw)
         return True, '그림 저장: ' + os.path.basename(path)
@@ -708,8 +868,31 @@ class SerialLink:
                 self.wait(2)
                 continue
             hub.set_conn(True, port, who=self)
-            buf, last_show = b'', time.monotonic() - 0.5           # 리셋 뒤 부팅이 끝날 즈음(2.5초 뒤) 첫 show
+            buf, last_show = b'', time.monotonic() + 0.7           # 리셋 뒤 부팅이 끝날 즈음 첫 show
             try:
+                # 포트를 열면 나노가 리셋되고, 부트로더가 끝난 뒤 "# boot" 를 보낸다. 그 전에 들어오는 것은 열기 전에
+                # 드라이버에 남아 있던 찌꺼기다. 실제로 같은 두 줄이 2초 동안 1만 7천 번 되풀이돼 들어와 기록에 섞인 적이
+                # 있어서(2026-11-20), "# boot" 가 보일 때까지(길어도 3초) 들어온 것은 버린다.
+                got, end = 0, time.monotonic() + 3.0
+                try:
+                    self.ser.reset_input_buffer()
+                except Exception:
+                    pass
+                while self.alive and time.monotonic() < end:
+                    chunk = self.ser.read(4096)
+                    got += len(chunk)
+                    buf = (buf + chunk)[-8192:]
+                    i = buf.find(b'# boot')
+                    if i >= 0:
+                        buf = buf[i:]
+                        break
+                else:
+                    buf = b''                                      # 자동 리셋이 없는 보드: 3초 뒤부터 그냥 받는다
+                if got - len(buf) > 0:
+                    hub.note('conn', '연결 직후 들어온 %d바이트를 버림 (보드가 켜지기 전의 찌꺼기)' % (got - len(buf)))
+                while b'\n' in buf:                                # 기다리는 동안 받은 부팅 줄을 바로 넘긴다
+                    line, buf = buf.split(b'\n', 1)
+                    hub.feed(line.decode('ascii', 'replace'), who=self)
                 while self.alive:
                     chunk = self.ser.read(256)
                     if chunk:
@@ -813,6 +996,11 @@ def make_handler(hub, token):
                 except ValueError:
                     return self.reply(400, {'error': 'bad query'})
                 return self.reply(200, hub.snapshot(g, max(0, n), max(0, ev)))
+            if u.path == '/api/records':
+                return self.reply(200, {'records': hub.records(), 'folder': hub.out_dir})
+            if u.path == '/api/record':
+                rec = hub.load_record(parse_qs(u.query).get('id', [''])[0])
+                return self.reply(200, rec) if rec else self.reply(404, {'error': '기록을 찾지 못함'})
             self.reply(404, {'error': 'not found'})
 
         def do_POST(self):
@@ -821,7 +1009,7 @@ def make_handler(hub, token):
                 return self.reply(403, {'error': 'forbidden'})
             try:
                 n = int(self.headers.get('Content-Length', '0') or 0)
-                limit = 16000000 if self.path == '/api/png' else 4000
+                limit = 16000000 if self.path in ('/api/png', '/api/report') else 20000
                 body = json.loads(self.rfile.read(n) or b'{}') if 0 <= n <= limit else None
             except ValueError:
                 body = None
@@ -840,7 +1028,7 @@ def make_handler(hub, token):
                 hub.new_file(body)
                 return self.reply(200, {'ok': True, 'msg': '새 파일: ' + os.path.basename(hub.state['csv'])})
             if self.path == '/api/png':
-                ok, msg = hub.save_png(body.get('data'), body.get('tag', ''))
+                ok, msg = hub.save_png(body.get('data'), body.get('tag', ''), body.get('rid'))
                 return self.reply(200, {'ok': ok, 'msg': msg})
             if self.path == '/api/cfg':
                 hub.set_cfg(body)
@@ -852,10 +1040,13 @@ def make_handler(hub, token):
                 hub.alarm_ack()
                 return self.reply(200, {'ok': True, 'msg': '경보를 확인했습니다'})
             if self.path == '/api/export':
-                ok, msg = hub.export_part(body.get('t0'), body.get('t1'))
+                ok, msg = hub.export_part(body.get('t0'), body.get('t1'), body.get('rid'))
                 return self.reply(200, {'ok': ok, 'msg': msg})
             if self.path == '/api/stats':
                 ok, msg = hub.save_stats(body)
+                return self.reply(200, {'ok': ok, 'msg': msg})
+            if self.path == '/api/report':
+                ok, msg = hub.save_report(body)
                 return self.reply(200, {'ok': ok, 'msg': msg})
             if self.path == '/api/open':
                 ok, msg = hub.open_folder()
@@ -927,6 +1118,8 @@ def main(window=False):
     if a.sim is not None and a.sim <= 0:
         ap.error('--sim 배속은 0보다 커야 합니다')
     window = window or a.window
+    if a.sim is None:
+        a.selftest = None                  # 자동 점검은 운전 단추를 누르므로 가상 보드에서만 한다. 실물 보드에서는 절대 돌리지 않는다
 
     hub = Hub(a.out, name=a.name)
     atexit.register(hub.close)             # 어떤 길로 끝나든 파일을 닫는다 (이미 닫혔으면 아무 일도 안 함)
