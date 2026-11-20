@@ -5,11 +5,27 @@
 <title>밴드 히터 PID 기록</title>
 <style>
 /* 계측 프로그램의 프런트 패널 방식: 회색 패널, 테두리 묶음, 움푹 들어간 표시창, LED, 검은 차트. 밝기 설정과 무관하게 같은 모양. */
+:root { --labw: 40px; }
+html[lang=en] { --labw: 52px; }
+html[lang=en] #tabs button { padding: 1px 6px; }
+#t_state { padding: 0 8px; white-space: nowrap; }
 :root { --panel: #d6d6d6; --hi: #f6f6f6; --lo: #6f6f6f; --ink: #000; --ink2: #3c3c3c; --field: #ffffff; --ind: #efefef; }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--panel); color: var(--ink); font: 12px/1.35 Tahoma, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
 #app { min-height: 100%; display: flex; flex-direction: column; padding: 6px 8px 0; }
+#toolbar { display: flex; flex-wrap: wrap; gap: 1px; align-items: center; margin-bottom: 5px; padding: 2px 3px; border: 1px solid; border-color: var(--hi) var(--lo) var(--lo) var(--hi); }
+#toolbar button { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 1px 7px 1px 5px; border-width: 1px; border-color: transparent; background: none; }
+#toolbar button:hover:not(:disabled) { border-color: var(--hi) var(--lo) var(--lo) var(--hi); background: #dedede; }
+#toolbar button:active:not(:disabled), #toolbar button.on { border-color: var(--lo) var(--hi) var(--hi) var(--lo); background: #c4c4c4; }
+#toolbar svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+#toolbar button:disabled svg { opacity: 0.4; }
+#toolbar select { height: 22px; font: inherit; margin-right: 3px; }
+#help { max-width: 520px; }
+#help h3 { margin: 0 0 8px; font-size: 13px; }
+#help table { border-collapse: collapse; margin-bottom: 10px; }
+#help td { padding: 1px 14px 1px 0; vertical-align: top; }
+#help td:first-child { white-space: nowrap; color: var(--ink2); }
 #topbar { display: flex; gap: 6px; align-items: stretch; margin-bottom: 6px; }
 #topbar .ind { height: 26px; line-height: 20px; }
 #topbar button { min-height: 26px; }
@@ -125,9 +141,30 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
 @media (max-width: 900px) { #panel { grid-template-columns: 1fr; } #thwrap { height: 240px; flex: none; } .two { grid-template-columns: 1fr; } }
 </style>
 <div id="app">
+  <div id="toolbar" role="toolbar">
+    <button data-do="bnew" data-ic="new" title="현재 파일을 닫고 새 파일에 기록">새 기록</button>
+    <button data-do="bopen" data-ic="folder" title="기록 폴더 열기">폴더</button>
+    <span class="sep"></span>
+    <button data-do="brun" data-ic="run" title="히터 운전 시작">운전</button>
+    <button data-do="bstop" data-ic="stop" title="히터 정지">정지</button>
+    <button data-do="bclr" data-ic="reset" title="보드 경보 해제">경보 해제</button>
+    <span class="sep"></span>
+    <button data-do="bmark" data-ic="mark" title="현재 시각에 마커 추가 (스페이스)">마커</button>
+    <button data-do="bhold" data-ic="hold" title="기록은 계속하고 화면만 고정 (h)">화면 고정</button>
+    <button data-do="bcur" data-ic="cursor" title="커서 지우기 (c)">커서 지우기</button>
+    <span class="sep"></span>
+    <button data-do="bpng" data-ic="image" title="차트를 PNG 파일로 저장">그림</button>
+    <button data-do="bpart" data-ic="csv" title="보이는 구간을 CSV 파일로 저장">구간 CSV</button>
+    <button data-do="bstats" data-ic="sigma" title="구간 통계를 파일로 저장">통계</button>
+    <button id="brep" data-ic="report" title="차트와 표를 한 파일로 저장">보고서</button>
+    <span class="sep"></span>
+    <button id="bbig" data-ic="big" title="멀리서도 보이도록 숫자를 크게 표시 (b)">큰 화면</button>
+    <button data-do="btall" data-ic="tall" title="탭 영역 확대">탭 확대</button>
+    <span class="grow"></span>
+    <select id="lang" aria-label="Language" data-keep><option value="ko">한국어</option><option value="en">English</option></select>
+    <button id="bhelp" data-ic="help" title="단축키와 프로그램 정보 (?)">도움말</button>
+  </div>
   <div id="topbar">
-    <button id="brep" title="차트와 표를 한 파일로 저장">보고서</button>
-    <button id="bbig" title="멀리서 보이게 숫자만 크게 (b)">큰 화면</button>
     <div id="t_name" class="ind str grow"></div>
     <div id="t_prog" class="ind str" style="min-width:230px" hidden></div>
     <div id="t_alarm" class="state pc blink" hidden></div>
@@ -150,25 +187,25 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
 
       <fieldset>
         <legend>현재값</legend>
-        <div class="row"><span class="lab" style="width:34px">PV</span><div id="n_pv" class="ind big grow">–</div><span class="unit">°C</span></div>
-        <div class="row"><span class="lab" style="width:34px">SP</span><div id="n_sp" class="ind grow">–</div><span class="unit">°C</span></div>
-        <div class="row"><span class="lab" style="width:34px">편차</span><div id="n_dev" class="ind grow">–</div><span class="unit">°C</span></div>
-        <div class="row"><span class="lab" style="width:34px">속도</span><div id="n_rate" class="ind grow" title="최근 60초의 PV 기울기">–</div><span class="unit" style="width:30px">°C/분</span></div>
-        <div class="row"><span class="lab" style="width:34px">출력</span><div id="n_out" class="ind" style="width:52px">–</div><span class="unit">%</span><div class="slide grow"><i id="bar_out" style="width:0"></i></div></div>
-        <div class="row"><span class="lab" style="width:34px">전력</span><div id="n_pw" class="ind grow" title="히터 정격 × 출력으로 계산한 추정값">–</div><span class="unit">W</span></div>
+        <div class="row"><span class="lab" style="width:var(--labw)">PV</span><div id="n_pv" class="ind big grow">–</div><span class="unit">°C</span></div>
+        <div class="row"><span class="lab" style="width:var(--labw)">SP</span><div id="n_sp" class="ind grow">–</div><span class="unit">°C</span></div>
+        <div class="row"><span class="lab" style="width:var(--labw)">편차</span><div id="n_dev" class="ind grow">–</div><span class="unit">°C</span></div>
+        <div class="row"><span class="lab" style="width:var(--labw)">변화율</span><div id="n_rate" class="ind grow" title="최근 60초의 PV 기울기">–</div><span class="unit" style="width:30px">°C/분</span></div>
+        <div class="row"><span class="lab" style="width:var(--labw)">출력</span><div id="n_out" class="ind" style="width:52px">–</div><span class="unit">%</span><div class="slide grow"><i id="bar_out" style="width:0"></i></div></div>
+        <div class="row"><span class="lab" style="width:var(--labw)">전력</span><div id="n_pw" class="ind grow" title="히터 정격 × 출력으로 계산한 추정값">–</div><span class="unit">W</span></div>
       </fieldset>
 
       <fieldset>
         <legend>제어</legend>
-        <div class="row"><label for="sp" style="width:34px">목표</label><input id="sp" type="number" min="0" max="300" step="1" inputmode="decimal" class="grow"><span class="unit">°C</span><button id="bsp">적용</button></div>
+        <div class="row"><label for="sp" style="width:var(--labw)">목표</label><input id="sp" type="number" min="0" max="300" step="1" inputmode="decimal" class="grow"><span class="unit">°C</span><button id="bsp">적용</button></div>
         <div class="row"><button id="brun" class="go grow">운전</button><button id="bstop" class="stop grow">STOP</button></div>
-        <div class="row"><div id="n_mode" class="ind str grow">–</div><button id="bclr">알람 해제</button></div>
+        <div class="row"><div id="n_mode" class="ind str grow">–</div><button id="bclr">경보 해제</button></div>
         <div class="leds">
           <div class="ledrow"><span id="led_run" class="led"></span>운전</div>
           <div class="ledrow"><span id="led_relay" class="led"></span>릴레이</div>
           <div class="ledrow"><span id="led_tune" class="led yel"></span>오토튜닝</div>
           <div class="ledrow"><span id="led_ssr" class="led"></span>SSR</div>
-          <div class="ledrow"><span id="led_fault" class="led red"></span>보드 알람</div>
+          <div class="ledrow"><span id="led_fault" class="led red"></span>보드 경보</div>
           <div class="ledrow"><span id="led_pc" class="led red"></span>PC 경보</div>
           <div class="ledrow"><span id="led_stab" class="led"></span>안정</div>
         </div>
@@ -176,7 +213,7 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
 
       <fieldset>
         <legend>명령</legend>
-        <div class="row"><input id="cmd" class="grow" placeholder="kp 3 / src 4 / tune" autocomplete="off" spellcheck="false" aria-label="명령"><button id="bcmd">보내기</button></div>
+        <div class="row"><input id="cmd" class="grow" placeholder="kp 3 / src 4 / tune" autocomplete="off" spellcheck="false" aria-label="명령"><button id="bcmd">전송</button></div>
         <div class="row"><div id="msg" class="ind str grow"></div></div>
       </fieldset>
     </div>
@@ -187,30 +224,30 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
         <div class="row" style="margin-top:0">
           <button data-win="300">5분</button><button data-win="1800">30분</button><button data-win="7200">2시간</button><button data-win="0">전체</button>
           <span class="sep"></span>
-          <button id="bhold" title="기록은 계속하고 화면만 멈춤 (h)">화면 정지</button>
+          <button id="bhold" title="기록은 계속하고 화면만 고정 (h)">화면 고정</button>
           <span class="sep"></span>
           <label><input id="yauto" type="checkbox" checked>Y 자동</label>
           <input id="ymin" type="number" step="any" aria-label="Y 최소" disabled><span>~</span><input id="ymax" type="number" step="any" aria-label="Y 최대" disabled>
           <span id="selnote"></span>
-          <span id="vnote" class="grow" hidden></span><button id="blive" hidden>실시간으로</button>
+          <span id="vnote" class="grow" hidden></span><button id="blive" hidden>실시간 보기</button>
         </div>
         <div class="row"><div id="legend" class="grow"></div></div>
         <div id="cvwrap"><canvas id="cv"></canvas></div>
         <div class="row">
-          <label for="mark">표시</label>
+          <label for="mark">마커</label>
           <input id="mark" maxlength="120" autocomplete="off" style="width:160px">
-          <button id="bmark" title="지금 시각에 표시 (빈 칸이면 번호만, 스페이스)">남기기</button>
+          <button id="bmark" title="현재 시각에 마커 추가 (비워 두면 번호만 기록, 스페이스)">추가</button>
           <span class="sep"></span>
           <span id="curnote">A –   B –</span>
-          <button id="bcur" title="(c)">커서 지움</button>
+          <button id="bcur" title="(c)">커서 지우기</button>
           <span class="grow"></span>
           <button id="bpng">그림 저장</button>
         </div>
       </fieldset>
 
       <div id="tabs">
-        <button data-tab="p_stat" class="on">통계</button><button data-tab="p_resp">응답</button><button data-tab="p_cur">커서·맞춤</button><button data-tab="p_model">모델</button><button data-tab="p_an">분석</button><button data-tab="p_prog">프로그램</button><button data-tab="p_alarm">경보</button><button data-tab="p_exp">실험</button><button data-tab="p_ev">사건</button><button data-tab="p_rec">파일</button><button data-tab="p_set">설정</button>
-        <button id="btall" title="탭 영역을 키움">탭 크게</button>
+        <button data-tab="p_stat" class="on">통계</button><button data-tab="p_resp">응답</button><button data-tab="p_cur">커서·피팅</button><button data-tab="p_model">모델</button><button data-tab="p_an">분석</button><button data-tab="p_prog">프로그램</button><button data-tab="p_alarm">경보</button><button data-tab="p_exp">실험</button><button data-tab="p_ev">이벤트</button><button data-tab="p_rec">기록 목록</button><button data-tab="p_set">설정</button>
+        <button id="btall" title="탭 영역 확대">확대</button>
       </div>
       <div id="pages">
         <div id="p_stat">
@@ -222,12 +259,12 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
         <div id="p_cur" hidden>
           <table id="curs" class="tbl"></table>
           <div class="row"><span id="curd" class="grow"></span></div>
-          <div class="row"><label><input id="fit_on" type="checkbox">A ~ B 구간 지수 맞춤</label><label for="fit_ch">채널</label>
+          <div class="row"><label><input id="fit_on" type="checkbox">A ~ B 구간 지수 피팅</label><label for="fit_ch">채널</label>
             <select id="fit_ch"><option>PV</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select><span id="fitcap" class="grow"></span></div>
           <table id="fit" class="tbl kv" hidden></table>
         </div>
         <div id="p_model" hidden>
-          <div class="row" style="margin:0 0 5px"><button id="bmodel">보이는 구간으로 모델 맞춤</button><button id="bmodel0">지움</button><span id="modelcap" class="grow"></span></div>
+          <div class="row" style="margin:0 0 5px"><button id="bmodel">보이는 구간으로 모델 피팅</button><button id="bmodel0">지우기</button><span id="modelcap" class="grow"></span></div>
           <table id="model" class="tbl kv"></table>
         </div>
         <div id="p_an" hidden>
@@ -236,7 +273,7 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
               <label for="an_view">보기</label>
               <select id="an_view"><option value="rate">승온 속도 (°C/분)</option><option value="err">편차 PV − SP</option><option value="diff">채널 간 차이</option><option value="hist">분포</option><option value="xy">출력 – 온도</option><option value="prof">위치별 온도</option></select>
               <label for="an_ch">채널</label><select id="an_ch"><option>PV</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select>
-              <label for="an_win">기울기 창</label><select id="an_win"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">120 s</option><option value="300">300 s</option></select>
+              <label for="an_win">기울기 계산 구간</label><select id="an_win"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">120 s</option><option value="300">300 s</option></select>
               <span id="ancap" class="grow"></span>
             </div>
             <div class="cvbox"><canvas id="cv2"></canvas></div>
@@ -248,8 +285,8 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
               <table id="steps" class="tbl edit"></table>
               <div class="row"><button id="bstep">단계 추가</button>
                 <label for="p_cyc">반복</label><input id="p_cyc" type="number" min="1" max="100" step="1" class="num5"><span>회</span><span class="grow"></span>
-                <label for="p_tol">도달 ±</label><input id="p_tol" type="number" min="0.1" max="20" step="0.1" class="num5"><span>°C</span></div>
-              <div class="row"><label><input id="p_end" type="checkbox">끝나면 히터 정지</label><span class="grow"></span><button id="bpsave">저장</button></div>
+                <label for="p_tol">도달 판정 ±</label><input id="p_tol" type="number" min="0.1" max="20" step="0.1" class="num5"><span>°C</span></div>
+              <div class="row"><label><input id="p_end" type="checkbox">종료 후 히터 정지</label><span class="grow"></span><button id="bpsave">저장</button></div>
               <div class="row"><label for="p_pre">프리셋</label><select id="p_pre" class="grow"></select><button id="bpload">불러오기</button>
                 <input id="p_name" placeholder="이름" maxlength="30" style="width:90px"><button id="bpadd">이름으로 저장</button><button id="bpdel">삭제</button></div>
             </div>
@@ -264,16 +301,16 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
           <div class="two">
             <div>
               <table class="tbl edit">
-                <tr><th>항목</th><th>한계 (°C), 비우면 끔</th></tr>
+                <tr><th>항목</th><th>한계 (°C), 비워 두면 사용 안 함</th></tr>
                 <tr><td>T1 상한</td><td><input id="a_h0" type="number" step="any"></td></tr>
                 <tr><td>T2 상한</td><td><input id="a_h1" type="number" step="any"></td></tr>
                 <tr><td>T3 상한</td><td><input id="a_h2" type="number" step="any"></td></tr>
                 <tr><td>T4 상한</td><td><input id="a_h3" type="number" step="any"></td></tr>
                 <tr><td>채널 간 최대 차이</td><td><input id="a_sp" type="number" step="any" min="0"></td></tr>
               </table>
-              <div class="row"><label><input id="a_stop" type="checkbox">경보 때 히터 정지</label><label><input id="a_beep" type="checkbox">경보음</label></div>
+              <div class="row"><label><input id="a_stop" type="checkbox">경보 시 히터 정지</label><label><input id="a_beep" type="checkbox">경보음</label></div>
               <div class="row"><span>안정 판정: 목표 ±</span><input id="a_tol" type="number" step="any" min="0.05" class="num5"><span>°C,  기울기</span><input id="a_rate" type="number" step="any" min="0.01" class="num5"><span>°C/분 이하,</span><input id="a_min" type="number" step="any" min="0.5" class="num5"><span>분 동안</span></div>
-              <div class="row"><label><input id="a_notify" type="checkbox">맥 알림 (안정, 프로그램 끝, 경보, 연결 끊김)</label><span class="grow"></span><button id="basave">저장</button></div>
+              <div class="row"><label><input id="a_notify" type="checkbox">macOS 알림 (안정, 프로그램 종료, 경보, 연결 끊김)</label><span class="grow"></span><button id="basave">저장</button></div>
             </div>
             <div>
               <table id="astat" class="tbl kv"></table>
@@ -290,21 +327,21 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
             <label for="m_l1">T2 위치</label><input id="m_l1" maxlength="24">
             <label for="m_l2">T3 위치</label><input id="m_l2" maxlength="24">
             <label for="m_l3">T4 위치</label><input id="m_l3" maxlength="24">
-            <label for="m_p0">T1 ~ T4 좌표</label><span class="wide row" style="margin:0"><input id="m_p0" type="number" step="any" class="num5" aria-label="T1 좌표"><input id="m_p1" type="number" step="any" class="num5" aria-label="T2 좌표"><input id="m_p2" type="number" step="any" class="num5" aria-label="T3 좌표"><input id="m_p3" type="number" step="any" class="num5" aria-label="T4 좌표"><span>mm  (같은 축 위의 거리. 분석의 위치별 온도에 씀)</span></span>
+            <label for="m_p0">T1 ~ T4 좌표</label><span class="wide row" style="margin:0"><input id="m_p0" type="number" step="any" class="num5" aria-label="T1 좌표"><input id="m_p1" type="number" step="any" class="num5" aria-label="T2 좌표"><input id="m_p2" type="number" step="any" class="num5" aria-label="T3 좌표"><input id="m_p3" type="number" step="any" class="num5" aria-label="T4 좌표"><span>mm  (같은 축 위의 거리, 분석 탭의 위치별 온도에 사용)</span></span>
           </div>
           <div class="row" style="margin-top:10px"><button id="bmeta">저장</button><button id="bnew">새 파일로 기록 시작</button></div>
         </div>
         <div id="p_ev" hidden style="height:100%"><ul id="ev" class="list"></ul></div>
         <div id="p_rec" hidden>
           <div class="row" style="margin:0 0 5px"><button id="brec">목록 새로 고침</button><span class="sep"></span>
-            <label><input id="ref_al" type="checkbox" checked>겹칠 때 운전 시작을 맞춤</label><button id="bref0">겹치기 해제</button><span id="reccap" class="grow"></span></div>
+            <label><input id="ref_al" type="checkbox" checked>겹칠 때 운전 시작 시점 맞추기</label><button id="bref0">겹치기 해제</button><span id="reccap" class="grow"></span></div>
           <table id="recs" class="tbl left"></table>
         </div>
         <div id="p_set" hidden>
           <div class="two">
             <div>
               <table class="tbl edit">
-                <tr><th>항목</th><th>보드 값</th><th>새 값</th></tr>
+                <tr><th>항목</th><th>보드 설정값</th><th>새 값</th></tr>
                 <tr><td>Kp</td><td id="s_kp">–</td><td><input id="e_kp" type="number" step="any" min="0"></td></tr>
                 <tr><td>Ki</td><td id="s_ki">–</td><td><input id="e_ki" type="number" step="any" min="0"></td></tr>
                 <tr><td>Kd</td><td id="s_kd">–</td><td><input id="e_kd" type="number" step="any" min="0"></td></tr>
@@ -341,12 +378,37 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
   <p id="dlgtext"></p>
   <div class="row"><span class="grow"></span><button id="dlgyes" style="min-width:70px">확인</button><button id="dlgno" style="min-width:70px">취소</button></div>
 </dialog>
+<dialog id="help">
+  <h3 id="h_title"></h3>
+  <table id="h_keys"></table>
+  <table id="h_about"></table>
+  <div class="row"><span class="grow"></span><button id="helpok" style="min-width:70px">닫기</button></div>
+</dialog>
 <script>
 const TOKEN = '__TOKEN__';
+// ---------- 언어. 서버가 <html lang>에 고른 언어를 넣어 준다. 바꾸면 화면을 다시 읽는다 ----------
+const LANG = document.documentElement.lang === 'en' ? 'en' : 'ko', MISS = new Set();
+const EN = {"새 기록":"New","폴더":"Folder","운전":"RUN","정지":"STOP","경보 해제":"Clear alarm","마커":"Marker","화면 고정":"Hold","커서 지우기":"Clear cursors","그림":"Image","구간 CSV":"Range CSV","통계":"Statistics","보고서":"Report","큰 화면":"Big display","탭 확대":"Expand tabs","도움말":"Help","닫기":"Close","확대":"Expand","현재 파일을 닫고 새 파일에 기록":"Close the current file and record to a new one","기록 폴더 열기":"Open the record folder","히터 운전 시작":"Start the heater","히터 정지":"Stop the heater","보드 경보 해제":"Clear the board alarm","현재 시각에 마커 추가 (스페이스)":"Add a marker at the current time (Space)","기록은 계속하고 화면만 고정 (h)":"Freeze the display; recording continues (h)","커서 지우기 (c)":"Clear cursors (c)","차트를 PNG 파일로 저장":"Save the chart as a PNG file","보이는 구간을 CSV 파일로 저장":"Save the visible range as a CSV file","구간 통계를 파일로 저장":"Save the range statistics to a file","차트와 표를 한 파일로 저장":"Save chart and tables in one file","멀리서도 보이도록 숫자를 크게 표시 (b)":"Large readout for viewing from a distance (b)","탭 영역 확대":"Enlarge the tab area","단축키와 프로그램 정보 (?)":"Shortcuts and program info (?)","기록 경과 시간":"Elapsed recording time","컴퓨터 시각":"Computer clock","시리얼 포트":"Serial port","연결":"Connection","확인 중":"Checking","가상 보드":"Virtual board","연습 모드":"Practice mode","연습 종료":"End practice","기록 폴더":"Record folder","현재값":"Readings","편차":"Dev.","변화율":"Rate","°C/분":"°C/min","출력":"Output","전력":"Power","최근 60초의 PV 기울기":"PV slope over the last 60 s","히터 정격 × 출력으로 계산한 추정값":"Estimate: heater rating × output","제어":"Control","목표":"Setpoint","적용":"Apply","릴레이":"Relay","오토튜닝":"Auto-tune","보드 경보":"Board alarm","PC 경보":"PC alarm","안정":"Stable","명령":"Command","전송":"Send","온도 · 출력":"Temperature · Output","5분":"5 min","30분":"30 min","2시간":"2 h","전체":"All","Y 자동":"Auto Y","Y 최소":"Y min","Y 최대":"Y max","실시간 보기":"Back to live","추가":"Add","현재 시각에 마커 추가 (비워 두면 번호만 기록, 스페이스)":"Add a marker at the current time (blank = number only, Space)","그림 저장":"Save image","응답":"Response","커서·피팅":"Cursors · Fit","모델":"Model","분석":"Analysis","프로그램":"Program","경보":"Alarms","실험":"Experiment","이벤트":"Events","기록 목록":"Records","설정":"Settings","통계 저장":"Save statistics","구간 CSV 저장":"Save range as CSV","A ~ B 구간 지수 피팅":"Exponential fit between A and B","채널":"Channel","보이는 구간으로 모델 피팅":"Fit model to the visible range","지우기":"Clear","보기":"View","승온 속도 (°C/분)":"Heating rate (°C/min)","편차 PV − SP":"Deviation PV − SP","채널 간 차이":"Channel spread","분포":"Histogram","출력 – 온도":"Output vs temperature","위치별 온도":"Temperature profile","기울기 계산 구간":"Slope window","단계 추가":"Add step","반복":"Repeat","회":"times","도달 판정 ±":"Reached within ±","종료 후 히터 정지":"Heater off at the end","저장":"Save","프리셋":"Preset","불러오기":"Load","이름으로 저장":"Save as","삭제":"Delete","이름":"Name","프로그램 시작":"Start program","중지":"Stop","계획한 목표 곡선":"Planned setpoint curve","항목":"Item","한계 (°C), 비워 두면 사용 안 함":"Limit (°C), blank = off","T1 상한":"T1 high limit","T2 상한":"T2 high limit","T3 상한":"T3 high limit","T4 상한":"T4 high limit","채널 간 최대 차이":"Max channel spread","경보 시 히터 정지":"Stop the heater on alarm","경보음":"Beep","안정 판정: 목표 ±":"Stable when within ±","°C, 기울기":"°C of setpoint, slope ≤","°C/분 이하,":"°C/min, for","분 동안":"min","macOS 알림 (안정, 프로그램 종료, 경보, 연결 끊김)":"macOS notifications (stable, program end, alarm, disconnect)","경보 확인":"Acknowledge alarm","실험 이름":"Experiment name","시료":"Sample","메모":"Notes","T1 위치":"T1 position","T2 위치":"T2 position","T3 위치":"T3 position","T4 위치":"T4 position","T1 ~ T4 좌표":"T1–T4 coordinates","T1 좌표":"T1 coordinate","T2 좌표":"T2 coordinate","T3 좌표":"T3 coordinate","T4 좌표":"T4 coordinate","mm (같은 축 위의 거리, 분석 탭의 위치별 온도에 사용)":"mm (distance along one axis; used by the temperature profile in Analysis)","새 파일로 기록 시작":"Start a new record file","목록 새로 고침":"Refresh list","겹칠 때 운전 시작 시점 맞추기":"Align overlays at run start","겹치기 해제":"Remove overlay","보드 설정값":"Board value","새 값":"New value","출력 한계 (%)":"Output limit (%)","제어 기준":"Control sensor","새 값 적용":"Apply new values","히터 정격":"Heater rating","봉 지름":"Rod diameter","열전도도":"Conductivity","열전대":"Thermocouples","* 제어 기준 ◀ 목표":"* control sensor ◀ setpoint","확인":"OK","취소":"Cancel","보드":"Board","상태":"State","시작":"Start","램프":"Ramp","도달 대기":"Waiting to reach","유지":"Hold","기록 프로그램과 연결할 수 없습니다":"Cannot reach the logger","실패":"Failed","전송: ":"Sent: ","구간이 너무 짧습니다 (60줄 이상 필요)":"Range too short (60 rows or more needed)","데이터가 부족합니다":"Not enough data","출력 변화가 작아 모델을 구할 수 없습니다":"Output hardly changes; no model can be fitted","온도 변화가 3 °C 미만입니다":"Temperature change is under 3 °C","{0}분":"{0} min","{0} 분":"{0} min","출력 (%)":"Output (%)","평균 전력 {0} W,  에너지 {1} Wh   (추정: 히터 {2} W × 출력)":"Mean power {0} W,  energy {1} Wh   (estimate: heater {2} W × output)","운전 구간":"Run","없음":"none","스텝":"Step","구간":"Range","운전 중":"running","지표":"Metrics","스텝 2 °C 미만":"step under 2 °C","상승 시간 (10 → 90 %)":"Rise time (10 → 90 %)","목표 도달 시간":"Time to setpoint","오버슈트":"Overshoot","정착 시간 (±{0} °C, {1} s)":"Settling time (±{0} °C, {1} s)","정착 후 PV 평균 ± 표준편차":"PV mean ± SD after settling","정착 후 평균 편차 (PV − SP)":"Mean deviation after settling (PV − SP)","커서":"Cursor","시간":"Time","모델식":"Model","채널, 구간":"Channel, range","T∞ (최종 온도)":"T∞ (final temperature)","ΔT (tA에서의 온도차)":"ΔT (difference at tA)","τ (시정수)":"τ (time constant)","비고":"Remarks","구간이 τ에 비해 너무 짧거나 길어 τ가 불확실합니다":"Range is too short or too long relative to τ; τ is uncertain","구간 평균 {0}점":"{0} averaged points","K (이득)":"K (gain)","θ (지연 시간)":"θ (dead time)","현재 목표 유지에 필요한 출력 (모델)":"Output needed to hold the setpoint (model)","출력 100 % 유지 시 온도 (선형 외삽)":"Temperature at a constant 100 % output (linear extrapolation)","약 {0} °C (실제로는 열손실이 커져 이보다 낮음)":"about {0} °C (lower in practice as heat loss grows)","구간이 짧아 τ와 K가 불확실합니다. 정상상태까지 포함해 다시 계산하세요":"Range too short; τ and K are uncertain. Include the steady state and fit again","기록 프로그램이 종료되었습니다":"Logger is not running","보드 연결 안 됨":"Board not connected","(수신 없음)":"(no data)","(실험 이름 없음)":"(no experiment name)","{0}/{1}회":"cycle {0}/{1}","{0}/{1}단계":"step {0}/{1}","남은 시간":"left","자동 선택":"Auto","연결 안 됨":"Not connected","마지막":"Last","현재":"Now","평균":"Mean","표준편차":"SD","최소":"Min","최대":"Max","기울기 (°C/분)":"Slope (°C/min)","커서 A와 B를 지정하면 계산합니다":"Set cursors A and B to compute","운전 시작부터 정상상태까지 화면에 보이게 한 뒤 누르세요":"Show the run from start to steady state, then press","(없음)":"(none)","대기":"Idle","현재 목표 → 단계 목표":"Current → step setpoint","유지 남은 시간":"Hold time left","램프 남은 시간":"Ramp time left","계획 시간 (램프 + 유지)":"Planned time (ramp + hold)","목표 변경 명령":"Setpoint command","spt (보드에 저장 안 함)":"spt (not saved to the board)","sp (1 °C 단위, 보드에 저장)":"sp (1 °C steps, saved to the board)","발생한 경보":"Latched alarm","현재 초과 항목":"Over limit now","{0}부터":"since {0}","아니오":"no","적산 전력량, 보드 추정 (Wh)":"Energy, board estimate (Wh)","운전 시간 (분)":"Run time (min)","샘플 간격 (s)":"Sample interval (s)","펌웨어":"Firmware","{0}점":"{0} pts","(화면 고정)":"(hold)","선택 구간":"Selected range","지난 기록 보기: ":"Viewing a past record: ","비교":"Overlay","피팅":"Fit","단계":"Step","목표 (°C)":"Setpoint (°C)","속도 (°C/분), 0 = 즉시":"Rate (°C/min), 0 = at once","유지 (분)":"Hold (min)","시:분":"h:mm",":초":":ss","분:초":"m:ss","온도 (°C)":"Temperature (°C)","구간 전체 기울기 {0} °C/분":"Slope over the range {0} °C/min","평균 {0},  RMS {1},  최대 |편차| {2} °C":"Mean {0},  RMS {1},  max |deviation| {2} °C","차이 (°C)":"Difference (°C)","최대 − 최소":"Max − min","빈도":"Count","평균 {0},  표준편차 {1},  범위 {2} °C,  n = {3}":"Mean {0},  SD {1},  range {2} °C,  n = {3}","위치 (mm)":"Position (mm)","(커서 A)":"(cursor A)","(마지막)":"(latest)","기울기":"Slope","전도 열량 약 {0} W  (지름 {1} mm, k {2})":"conducted heat about {0} W  (diameter {1} mm, k {2})","좌표(mm)를 입력한 채널이 2개 이상 측정되어야 합니다 (실험 탭)":"Needs two or more reading channels with coordinates (Experiment tab)","이 구간에는 표시할 데이터가 없습니다":"No data in this range","목표 온도는 0~300 °C 범위여야 합니다":"Setpoint must be within 0–300 °C","목표 {0} °C로 히터를 켭니다.":"Turn the heater on with setpoint {0} °C.","현재 파일을 닫고 새 파일에 기록을 시작합니다. 차트와 통계도 처음부터 다시 시작합니다.":"Close the current file and start recording to a new one. The chart and statistics start over.","구간 통계":"Range statistics","응답 특성 (가장 최근 운전 구간)":"Step response (most recent run)","지수 피팅":"Exponential fit","열 모델":"Thermal model","온도 프로그램 (저장된 설정)":"Temperature program (saved)","속도 (°C/분)":"Rate (°C/min)","즉시":"at once","반복 {0}회,  도달 판정 ±{1} °C,  ":"Repeat {0}×,  reached within ±{1} °C,  ","종료 후 정지":"heater off at the end","종료 후 목표 유지":"hold the last setpoint at the end","가상 보드로 연습합니다. 실제 히터는 켜지지 않으며, 기록은 연습 폴더에 따로 저장됩니다.":"Practice with the virtual board. The real heater stays off; records go to a separate practice folder.","연습을 종료하고 실물 보드로 돌아갑니다.":"End practice and return to the real board.","단계가 없습니다":"The program has no steps","{0}단계  {1} °C,  {2},  유지 {3}분":"Step {0}  {1} °C,  {2},  hold {3} min","프로그램 운전을 시작합니다. 히터가 켜집니다.":"Start the program. The heater turns on.","× {0}회 반복":"× {0} cycles","계획 시간":"Planned time","프리셋 불러옴: {0} (저장 또는 시작을 눌러야 적용됩니다)":"Preset loaded: {0} (press Save or Start to apply)","프리셋 이름을 입력하세요":"Enter a preset name","프리셋 저장: ":"Preset saved: ","프리셋 \"{0}\"을(를) 삭제합니다.":"Delete preset \"{0}\".","프리셋 삭제: ":"Preset deleted: ","{0} 값이 범위를 벗어났습니다":"{0} is out of range","변경할 값이 없습니다":"Nothing to change","보드 설정을 변경합니다.":"Change the board settings.","오토튜닝을 시작합니다. 히터가 켜지고 목표 {0} °C 부근에서 온도가 여러 번 오르내립니다. 완료되면 게인이 보드에 저장됩니다.":"Start auto-tune. The heater turns on and the temperature swings several times around the {0} °C setpoint. The gains are saved to the board when it finishes.","{0}개":"{0} records","시작 시각":"Started","줄 수":"Rows","(기록 중)":"(recording)","겹치기":"Overlay","목록을 읽지 못했습니다":"Could not read the list","겹쳐 보기: {0} ({1}줄)":"Overlay: {0} ({1} rows)","지난 기록: {0} ({1}줄)":"Past record: {0} ({1} rows)","기록을 읽지 못했습니다":"Could not read the record","밴드 히터 PID 기록":"Band Heater PID Logger","스페이스":"Space","현재 시각에 마커 추가":"Add a marker at the current time","화면 고정 / 해제":"Hold / release the display","큰 화면 켜기 / 끄기":"Big display on / off","차트 클릭":"Click on chart","커서 A, B 지정":"Set cursor A, then B","차트 드래그":"Drag on chart","구간 선택":"Select a range","휠":"Wheel","확대·축소 (좌우로 굴리면 이동)":"Zoom (scroll sideways to pan)","더블 클릭":"Double click","전체 구간 보기, 커서 지우기":"Show everything, clear cursors","기록 파일":"Record file","라이선스":"License","소스":"Source"};
+function TR(s, ...a) {
+  let r = s;
+  if (LANG === 'en') { if (EN[s] != null) r = EN[s]; else MISS.add(s); }
+  return a.length ? r.replace(/\{(\d)\}/g, (_, i) => a[+i]) : r;
+}
+(function () {                                                    // 고정 문구: 글자 노드와 title·placeholder를 한 번 바꾼다
+  if (LANG !== 'en') return;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), todo = [];
+  for (let n; (n = w.nextNode());) if (/[가-힣]/.test(n.nodeValue) && !n.parentNode.closest('script, style, [data-keep]')) todo.push(n);
+  for (const n of todo) { const v = n.nodeValue, k = v.replace(/\s+/g, ' ').trim(); if (EN[k] != null) n.nodeValue = (/^\s/.test(v) ? ' ' : '') + EN[k] + (/\s$/.test(v) ? ' ' : ''); else MISS.add(k); }
+  for (const el of document.querySelectorAll('[title], [placeholder], [aria-label]')) for (const at of ['title', 'placeholder', 'aria-label']) {
+    const v = el.getAttribute(at); if (v && /[가-힣]/.test(v)) { if (EN[v] != null) el.setAttribute(at, EN[v]); else MISS.add(v); }
+  }
+  document.title = 'Band Heater PID Logger';
+})();
+let appVer = '';
 const SER = [['PV', 'pv'], ['SP', 'sp'], ['T1', 't1'], ['T2', 't2'], ['T3', 't3'], ['T4', 't4'], ['OUT', 'out']];
 const IDX = { PV: 1, SP: 2, OUT: 3, T1: 4, T2: 5, T3: 6, T4: 7 }, MODE = 8, BAND = 1.0, HOLD = 60, PANEL = '#d6d6d6';
-const KIND = { board: '보드', cmd: '명령', mark: '표시', set: '설정', mode: '상태', conn: '연결', prog: '프로그램', alarm: '경보', stable: '안정' };
-const PHASE = { start: '시작', ramp: '목표 이동', wait: '도달 대기', hold: '유지' };
+const KIND = { board: TR('보드'), cmd: TR('명령'), mark: TR('마커'), set: TR('설정'), mode: TR('상태'), conn: TR('연결'), prog: TR('프로그램'), alarm: TR('경보'), stable: TR('안정') };
+const PHASE = { start: TR('시작'), ramp: TR('램프'), wait: TR('도달 대기'), hold: TR('유지') };
 // 화면용(검은 바탕)과 그림 저장용(흰 바탕) 색
 const PAL = {
   screen: { bg: '#000000', grid: '#303030', text: '#000000', pv: '#ffffff', sp: '#ffe600', t1: '#ff4d4d', t2: '#3dff3d', t3: '#4db8ff', t4: '#ff66ff', out: '#ffa31a',
@@ -372,7 +434,7 @@ function clock(t, sec) {
   const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60, p = n => String(n).padStart(2, '0');
   return h ? h + ':' + p(m) + (sec ? ':' + p(s) : '') : m + ':' + p(s);
 }
-const label = k => { const i = +k[1] - 1; return k[0] === 'T' && meta.labels[i] ? k + ' ' + meta.labels[i] : k === 'OUT' ? '출력' : k; };
+const label = k => { const i = +k[1] - 1; return k[0] === 'T' && meta.labels[i] ? k + ' ' + meta.labels[i] : k === 'OUT' ? TR('출력') : k; };
 const inside = id => { const a = document.activeElement; return !!(a && $(id).contains(a) && /INPUT|SELECT/.test(a.tagName)); };
 const dec = k => k === 'OUT' || k === 'SP' ? 1 : 2;
 
@@ -390,7 +452,7 @@ async function poll() {
     for (const x of d.rows) (frozen ? L.held : L.rows).push(x);
     for (const e of d.events) L.events.push(e);
     state = d.state; L.meta = d.meta; if (!V) meta = L.meta; elapsed = d.elapsed; ports = d.ports || []; want = d.want || ''; simOk = !!d.sim_ok;
-    cfg = d.cfg || cfg; prog = d.prog || {}; alarm = d.alarm || alarm; stable = d.stable || {}; spcmd = d.spcmd || 'sp';
+    cfg = d.cfg || cfg; prog = d.prog || {}; alarm = d.alarm || alarm; stable = d.stable || {}; spcmd = d.spcmd || 'sp'; appVer = d.ver || appVer;
     lost = false; more = L.rows.length + L.held.length < d.total;
   } catch (e) { lost = true; }
   render();
@@ -400,10 +462,10 @@ async function post(path, body) {
   try {
     const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': TOKEN }, body: JSON.stringify(body || {}) });
     return await r.json();
-  } catch (e) { return { ok: false, msg: '기록 프로그램에 닿지 않음' }; }
+  } catch (e) { return { ok: false, msg: TR('기록 프로그램과 연결할 수 없습니다') }; }
 }
-function say(d, okText) { $('msg').textContent = d.ok ? (okText || d.msg) : (d.msg || d.error || '실패'); $('msg').className = 'ind str grow' + (d.ok ? '' : ' bad'); $('msg').title = $('msg').textContent; return d.ok; }
-async function send(cmd) { const d = await post('/api/cmd', { cmd }); return say(d, '보냄: ' + d.msg); }
+function say(d, okText) { $('msg').textContent = d.ok ? (okText || d.msg) : (d.msg || d.error || TR('실패')); $('msg').className = 'ind str grow' + (d.ok ? '' : ' bad'); $('msg').title = $('msg').textContent; return d.ok; }
+async function send(cmd) { const d = await post('/api/cmd', { cmd }); return say(d, TR('전송: ') + d.msg); }
 
 // ---------- 계산 ----------
 function lowerOf(R, t) { let a = 0, b = R.length; while (a < b) { const m = (a + b) >> 1; if (R[m][0] < t) a = m + 1; else b = m; } return a; }
@@ -489,16 +551,16 @@ const runStart = R => { for (const r of R) if (r[MODE] === 1) return r[0]; retur
 // 구간의 첫 점에서 정지해 있었다고 본다. τ와 θ는 격자에서 고른 뒤 두 번 좁히고, K는 그때마다 최소제곱으로 구한다.
 function identify() {
   const [t0, t1] = range(), i0 = lower(t0), i1 = lower(t1 + 1e-6), n = i1 - i0;
-  if (n < 60) return { err: '구간이 너무 짧음 (60줄 이상 필요)' };
+  if (n < 60) return { err: TR('구간이 너무 짧습니다 (60줄 이상 필요)') };
   const stp = Math.max(1, Math.floor(n / 1500)), t = [], y = [], u = [];
   for (let i = i0; i < i1; i += stp) {                            // 여러 줄을 묶어 평균
     let st = 0, sy = 0, su = 0, c = 0;
     for (let k = i; k < Math.min(i1, i + stp); k++) { const r = rows[k]; if (r[1] == null || r[3] == null) continue; st += r[0]; sy += r[1]; su += r[3]; c++; }
     if (c) { t.push(st / c); y.push(sy / c); u.push(su / c); }
   }
-  const m = t.length; if (m < 40) return { err: '값이 모자람' };
-  if (Math.max(...u) - Math.min(...u) < 5) return { err: '출력이 거의 변하지 않아 모델을 정할 수 없음' };
-  if (Math.max(...y) - Math.min(...y) < 3) return { err: '온도 변화가 3 °C보다 작음' };
+  const m = t.length; if (m < 40) return { err: TR('데이터가 부족합니다') };
+  if (Math.max(...u) - Math.min(...u) < 5) return { err: TR('출력 변화가 작아 모델을 구할 수 없습니다') };
+  if (Math.max(...y) - Math.min(...y) < 3) return { err: TR('온도 변화가 3 °C 미만입니다') };
   const T0 = y[0], u0 = u[0], span = t[m - 1] - t[0], x = new Float64Array(m);
   function run(tau, th) {                                         // x = 입력 변화 (u − u₀)에 대한 단위 이득 응답
     let xv = 0, j = 0, Sxy = 0, Sxx = 0; x[0] = 0;
@@ -527,57 +589,57 @@ const led = (id, on) => $(id).classList.toggle('on', !!on);
 const row2 = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
 function tables() {                                              // 통계, 응답 등 표의 내용. 화면과 보고서가 같이 쓴다
   const [t0, t1] = range(), i0 = lower(t0), i1 = lower(t1 + 1e-6), last = rows[rows.length - 1], out = {};
-  out.range = `${clock(t0, true)} ~ ${clock(t1, true)}   ${((t1 - t0) / 60).toFixed(1)}분   n = ${Math.max(0, i1 - i0)}`;
+  out.range = `${clock(t0, true)} ~ ${clock(t1, true)}   ${TR('{0}분', ((t1 - t0) / 60).toFixed(1))}   n = ${Math.max(0, i1 - i0)}`;
   out.stats = ['PV', 'SP', 'T1', 'T2', 'T3', 'T4', 'OUT'].map(k => {
     const s = stat(IDX[k], i0, i1), d = dec(k);
-    return { k, s, cells: [k === 'OUT' ? '출력 (%)' : label(k), fx(last && last[IDX[k]], d)].concat(s ? [fx(s.mean, d + 1), fx(s.std, d + 1), fx(s.min, d), fx(s.max, d), k === 'OUT' || k === 'SP' ? '–' : fx(s.slope, 2)] : ['–', '–', '–', '–', '–']) };
+    return { k, s, cells: [k === 'OUT' ? TR('출력 (%)') : label(k), fx(last && last[IDX[k]], d)].concat(s ? [fx(s.mean, d + 1), fx(s.std, d + 1), fx(s.min, d), fx(s.max, d), k === 'OUT' || k === 'SP' ? '–' : fx(s.slope, 2)] : ['–', '–', '–', '–', '–']) };
   });
   const so = out.stats[6].s, hw = cfg.heater_w || 400;
-  out.power = so ? `평균 전력 ${(so.mean / 100 * hw).toFixed(1)} W,  에너지 ${(so.mean / 100 * hw * (t1 - t0) / 3600).toFixed(2)} Wh   (추정: 히터 ${hw} W × 출력)` : '';
+  out.power = so ? TR('평균 전력 {0} W,  에너지 {1} Wh   (추정: 히터 {2} W × 출력)', (so.mean / 100 * hw).toFixed(1), (so.mean / 100 * hw * (t1 - t0) / 3600).toFixed(2), hw) : '';
   const r = response(), sec = v => v == null ? '–' : clock(v, true) + '  (' + v.toFixed(0) + ' s)';
-  if (!r) out.resp = [['운전 구간', '없음']];
+  if (!r) out.resp = [[TR('운전 구간'), TR('없음')]];
   else {
-    out.resp = [['스텝', `${r.y0.toFixed(1)} → ${r.sp.toFixed(1)} °C`], ['구간', clock(r.t0, true) + ' ~ ' + (r.running ? '운전 중' : clock(r.tEnd, true))]];
-    if (Math.abs(r.d) < 2 * BAND) out.resp.push(['지표', '스텝 2 °C 미만']);
-    else out.resp.push(['상승 시간 (10 → 90 %)', sec(r.rise)], ['목표 도달', sec(r.reach)],
-      ['오버슈트', r.over == null ? '–' : r.over.toFixed(2) + ' °C  (' + (r.over / Math.abs(r.d) * 100).toFixed(1) + ' %)'],
-      ['정착 시간 (±' + BAND + ' °C, ' + HOLD + ' s)', sec(r.settle)],
-      ['정착 뒤 PV 평균 ± 표준편차', r.ss ? r.ss.mean.toFixed(3) + ' ± ' + fx(r.ss.std, 3) + ' °C  (n = ' + r.ss.n + ')' : '–'],
-      ['정착 뒤 평균 편차 (PV − SP)', r.ss ? sgn(r.ss.mean - r.sp, 3) + ' °C' : '–']);
+    out.resp = [[TR('스텝'), `${r.y0.toFixed(1)} → ${r.sp.toFixed(1)} °C`], [TR('구간'), clock(r.t0, true) + ' ~ ' + (r.running ? TR('운전 중') : clock(r.tEnd, true))]];
+    if (Math.abs(r.d) < 2 * BAND) out.resp.push([TR('지표'), TR('스텝 2 °C 미만')]);
+    else out.resp.push([TR('상승 시간 (10 → 90 %)'), sec(r.rise)], [TR('목표 도달 시간'), sec(r.reach)],
+      [TR('오버슈트'), r.over == null ? '–' : r.over.toFixed(2) + ' °C  (' + (r.over / Math.abs(r.d) * 100).toFixed(1) + ' %)'],
+      [TR('정착 시간 (±{0} °C, {1} s)', BAND, HOLD), sec(r.settle)],
+      [TR('정착 후 PV 평균 ± 표준편차'), r.ss ? r.ss.mean.toFixed(3) + ' ± ' + fx(r.ss.std, 3) + ' °C  (n = ' + r.ss.n + ')' : '–'],
+      [TR('정착 후 평균 편차 (PV − SP)'), r.ss ? sgn(r.ss.mean - r.sp, 3) + ' °C' : '–']);
   }
   const ia = curs[0] == null ? -1 : nearest(curs[0]), ib = curs[1] == null ? -1 : nearest(curs[1]), ra = rows[ia], rb = rows[ib];
   const cr = (name, rw, f) => [name, rw ? f(0) : '–'].concat(SER.map(([k]) => rw ? f(IDX[k], k) : '–'));
-  out.curHead = ['커서', '시간'].concat(SER.map(([k]) => label(k)));
+  out.curHead = [TR('커서'), TR('시간')].concat(SER.map(([k]) => label(k)));
   out.cur = [cr('A', ra, (j, k) => j === 0 ? clock(ra[0], true) : fx(ra[j], dec(k))), cr('B', rb, (j, k) => j === 0 ? clock(rb[0], true) : fx(rb[j], dec(k))),
     cr('B − A', ra && rb, (j, k) => j === 0 ? (rb[0] - ra[0]).toFixed(1) + ' s' : (ra[j] == null || rb[j] == null ? '–' : sgn(rb[j] - ra[j], dec(k))))];
   const dt = ra && rb ? rb[0] - ra[0] : 0;
-  out.curd = ra && rb && dt !== 0 && ra[1] != null && rb[1] != null ? `ΔPV / Δt = ${sgn((rb[1] - ra[1]) / dt * 60, 3)} °C/분   (Δt = ${Math.abs(dt).toFixed(1)} s)` : '';
+  out.curd = ra && rb && dt !== 0 && ra[1] != null && rb[1] != null ? `ΔPV / Δt = ${sgn((rb[1] - ra[1]) / dt * 60, 3)} ${TR('°C/분')}   (Δt = ${Math.abs(dt).toFixed(1)} s)` : '';
   out.ia = ia; out.ib = ib; out.ra = ra; out.rb = rb;
   FIT = null;
   if ($('fit_on').checked && ra && rb && ia !== ib) {
     FIT = expfit(IDX[$('fit_ch').value], ia, ib);
     if (FIT) { FIT.ch = $('fit_ch').value;
-      out.fit = [['모형', 'T(t) = T∞ + ΔT · exp(−(t − tA) / τ)'], ['채널, 구간', `${label(FIT.ch)},  ${clock(FIT.tA, true)} ~ ${clock(FIT.tB, true)}  (n = ${FIT.n})`],
-        ['T∞ (끝 온도)', FIT.a.toFixed(2) + ' °C'], ['ΔT (tA에서의 차이)', sgn(FIT.b, 2) + ' °C'], ['τ (시간 상수)', FIT.tau.toFixed(1) + ' s  (' + (FIT.tau / 60).toFixed(2) + ' 분)'],
-        ['R²,  RMSE', fx(FIT.r2, 5) + ',  ' + FIT.rmse.toFixed(3) + ' °C'], ['비고', FIT.weak ? '구간이 τ에 비해 너무 짧거나 길어 τ가 불확실함' : '']]; }
+      out.fit = [[TR('모델식'), 'T(t) = T∞ + ΔT · exp(−(t − tA) / τ)'], [TR('채널, 구간'), `${label(FIT.ch)},  ${clock(FIT.tA, true)} ~ ${clock(FIT.tB, true)}  (n = ${FIT.n})`],
+        [TR('T∞ (최종 온도)'), FIT.a.toFixed(2) + ' °C'], [TR('ΔT (tA에서의 온도차)'), sgn(FIT.b, 2) + ' °C'], [TR('τ (시정수)'), FIT.tau.toFixed(1) + ' s  (' + TR('{0} 분', (FIT.tau / 60).toFixed(2)) + ')'],
+        ['R²,  RMSE', fx(FIT.r2, 5) + ',  ' + FIT.rmse.toFixed(3) + ' °C'], [TR('비고'), FIT.weak ? TR('구간이 τ에 비해 너무 짧거나 길어 τ가 불확실합니다') : '']]; }
   }
   if (MODEL && !MODEL.err) {
     const M = MODEL;
-    out.model = [['모형', 'τ · dT/dt = K · (u(t − θ) − u₀) − (T − T₀)'], ['구간', `${clock(M.t0, true)} ~ ${clock(M.t1, true)}  (묶음 ${M.n}개),  T₀ ${M.T0.toFixed(2)} °C,  u₀ ${M.u0.toFixed(1)} %`],
-      ['K (이득)', M.K.toFixed(3) + ' °C/%'], ['τ (시간 상수)', M.tau.toFixed(1) + ' s  (' + (M.tau / 60).toFixed(2) + ' 분)'], ['θ (지연)', M.theta.toFixed(1) + ' s'],
+    out.model = [[TR('모델식'), 'τ · dT/dt = K · (u(t − θ) − u₀) − (T − T₀)'], [TR('구간'), `${clock(M.t0, true)} ~ ${clock(M.t1, true)}  (${TR('구간 평균 {0}점', M.n)}),  T₀ ${M.T0.toFixed(2)} °C,  u₀ ${M.u0.toFixed(1)} %`],
+      [TR('K (이득)'), M.K.toFixed(3) + ' °C/%'], [TR('τ (시정수)'), M.tau.toFixed(1) + ' s  (' + TR('{0} 분', (M.tau / 60).toFixed(2)) + ')'], [TR('θ (지연 시간)'), M.theta.toFixed(1) + ' s'],
       ['R²,  RMSE', fx(M.r2, 5) + ',  ' + M.rmse.toFixed(3) + ' °C'],
-      ['지금 목표를 유지하는 출력 (모델)', state.sp != null && M.K > 0 ? (M.u0 + (state.sp - M.T0) / M.K).toFixed(1) + ' %  (목표 ' + state.sp + ' °C)' : '–'],
-      ['출력 100 %를 계속 주면 (선형 외삽)', '약 ' + (M.T0 + M.K * (100 - M.u0)).toFixed(0) + ' °C. 실제로는 온도가 오를수록 열손실이 커져 이보다 낮음'],
-      ['비고', M.weak ? '구간이 모자라 τ나 K가 불확실함. 정상상태까지 포함한 구간으로 다시 하세요' : '']];
+      [TR('현재 목표 유지에 필요한 출력 (모델)'), state.sp != null && M.K > 0 ? (M.u0 + (state.sp - M.T0) / M.K).toFixed(1) + ' %  (' + TR('목표') + ' ' + state.sp + ' °C)' : '–'],
+      [TR('출력 100 % 유지 시 온도 (선형 외삽)'), TR('약 {0} °C (실제로는 열손실이 커져 이보다 낮음)', (M.T0 + M.K * (100 - M.u0)).toFixed(0))],
+      [TR('비고'), M.weak ? TR('구간이 짧아 τ와 K가 불확실합니다. 정상상태까지 포함해 다시 계산하세요') : '']];
   }
   return out;
 }
 function render() {
   const st = $('status'), last = L.rows[L.rows.length - 1], on = state.connected && !lost, mode = state.mode || '';
   let cls = '';
-  if (lost) { st.textContent = '기록 프로그램 꺼짐'; cls = ' bad'; }
-  else if (!state.connected) { st.textContent = state.note || '보드 연결 안 됨'; cls = ' warn'; }
-  else if (Date.now() - lastRowAt > 6000) { st.textContent = state.port + ' (값 없음)'; cls = ' warn'; }
+  if (lost) { st.textContent = TR('기록 프로그램이 종료되었습니다'); cls = ' bad'; }
+  else if (!state.connected) { st.textContent = state.note || TR('보드 연결 안 됨'); cls = ' warn'; }
+  else if (Date.now() - lastRowAt > 6000) { st.textContent = state.port + ' ' + TR('(수신 없음)'); cls = ' warn'; }
   else st.textContent = state.port;
   st.className = 'ind str grow' + cls; st.title = st.textContent;
   const pcAlarm = !lost && !!alarm.latched, bdAlarm = on && mode === 'FAULT', hw = cfg.heater_w || 400;
@@ -586,11 +648,11 @@ function render() {
   led('led_relay', on && state.relay === 'ON'); led('led_ssr', on && state.ssr === 'ON'); led('led_stab', on && stable.on);
 
   // 위쪽 상태 줄 (항상 지금 기록 중인 것)
-  $('t_name').textContent = [L.meta.name || '(실험 이름 없음)', L.meta.sample].filter(Boolean).join('  /  ');
-  $('t_state').textContent = on ? (mode || '–') + (stable.on ? ' · 안정' : '') : '–'; $('t_state').className = 'state ' + (on ? mode : '') + (bdAlarm ? ' blink' : '');
-  $('t_alarm').hidden = !pcAlarm; $('t_alarm').textContent = pcAlarm ? 'PC 경보: ' + alarm.latched : '';
+  $('t_name').textContent = [L.meta.name || TR('(실험 이름 없음)'), L.meta.sample].filter(Boolean).join('  /  ');
+  $('t_state').textContent = on ? (mode || '–') + (stable.on ? ' · ' + TR('안정') : '') : '–'; $('t_state').className = 'state ' + (on ? mode : '') + (bdAlarm ? ' blink' : '');
+  $('t_alarm').hidden = !pcAlarm; $('t_alarm').textContent = pcAlarm ? TR('PC 경보') + ': ' + alarm.latched : '';
   $('t_prog').hidden = !prog.on;
-  const ptxt = prog.on ? `프로그램 ${prog.cycles > 1 ? prog.cycle + '/' + prog.cycles + '회  ' : ''}${prog.step || 1}/${prog.n}  ${PHASE[prog.phase] || ''}` + (prog.sp != null ? `  ${fx(prog.sp, 1)} → ${fx(prog.target, 1)} °C` : '') + (prog.left != null ? `  남은 ${clock(prog.left, true)}` : '') : '';
+  const ptxt = prog.on ? `${TR('프로그램')} ${prog.cycles > 1 ? TR('{0}/{1}회', prog.cycle, prog.cycles) + '  ' : ''}${TR('{0}/{1}단계', prog.step || 1, prog.n)}  ${PHASE[prog.phase] || ''}` + (prog.sp != null ? `  ${fx(prog.sp, 1)} → ${fx(prog.target, 1)} °C` : '') + (prog.left != null ? `  ${TR('남은 시간')} ${clock(prog.left, true)}` : '') : '';
   $('t_prog').textContent = ptxt;
   $('t_el').textContent = lost ? '–' : clock(elapsed, true);
   $('t_wall').textContent = new Date().toTimeString().slice(0, 8);
@@ -601,11 +663,11 @@ function render() {
   const ps = JSON.stringify([ports, want]), sel0 = $('port');
   if (ps !== portsShown && document.activeElement !== sel0) {
     portsShown = ps;
-    sel0.innerHTML = '<option value="">포트 자동</option>' + ports.map(p => `<option value="${esc(p.device)}">${esc(p.device.replace('/dev/', '') + (p.desc ? ' (' + p.desc + ')' : ''))}</option>`).join('');
+    sel0.innerHTML = '<option value="">' + TR('자동 선택') + '</option>' + ports.map(p => `<option value="${esc(p.device)}">${esc(p.device.replace('/dev/', '') + (p.desc ? ' (' + p.desc + ')' : ''))}</option>`).join('');
     sel0.value = want;
   }
   sel0.disabled = !!state.sim || lost; $('bopen').disabled = lost;
-  $('bsim').hidden = !simOk; $('bsim').disabled = lost; $('bsim').textContent = state.sim ? '연습 끝내기' : '연습 모드';
+  $('bsim').hidden = !simOk; $('bsim').disabled = lost; $('bsim').textContent = state.sim ? TR('연습 종료') : TR('연습 모드');
 
   // 현재값 (항상 지금 보드)
   $('n_pv').textContent = fx(last && last[1], 2);
@@ -625,16 +687,16 @@ function render() {
   }
   $('tnum').innerHTML = tn;
   if (!$('big').hidden) {
-    $('big_state').textContent = on ? mode + (state.fault ? '  ' + state.fault : '') : '연결 안 됨'; $('big_state').className = on ? mode : '';
+    $('big_state').textContent = on ? mode + (state.fault ? '  ' + state.fault : '') : TR('연결 안 됨'); $('big_state').className = on ? mode : '';
     $('big_pv').innerHTML = esc(fx(last && last[1], 1)) + '<small>°C</small>';
-    $('big_sub').textContent = `SP ${fx(last ? last[2] : state.sp, 1)} °C     출력 ${fx(last && last[3], 0)} %     ${sgn(rate, 2)} °C/분` + (ptxt ? '     ' + ptxt : '');
+    $('big_sub').textContent = `SP ${fx(last ? last[2] : state.sp, 1)} °C     ${TR('출력')} ${fx(last && last[3], 0)} %     ${sgn(rate, 2)} ${TR('°C/분')}` + (ptxt ? '     ' + ptxt : '');
     $('big_ch').textContent = [1, 2, 3, 4].map(i => `T${i} ${fx(last && last[3 + i], 1)}`).join('      ') + '      ' + clock(elapsed, true);
   }
 
   // 통계, 응답, 커서, 맞춤 (보이는 기록 기준)
   const tb = tables(), dl = rows[rows.length - 1];
-  $('statcap').textContent = '구간 ' + tb.range;
-  $('stats').innerHTML = `<tr><th>채널</th><th>${V ? '마지막' : '현재'}</th><th>평균</th><th>표준편차</th><th>최소</th><th>최대</th><th>기울기 (°C/분)</th></tr>` +
+  $('statcap').textContent = TR('구간') + ' ' + tb.range;
+  $('stats').innerHTML = `<tr><th>${TR('채널')}</th><th>${V ? TR('마지막') : TR('현재')}</th><th>${TR('평균')}</th><th>${TR('표준편차')}</th><th>${TR('최소')}</th><th>${TR('최대')}</th><th>${TR('기울기 (°C/분)')}</th></tr>` +
     tb.stats.map(r => `<tr><td><i class="chip" style="background:${PAL.print[r.k.toLowerCase()]}"></i>${esc(r.cells[0])}</td>` + r.cells.slice(1).map(x => `<td>${x}</td>`).join('') + '</tr>').join('');
   $('powcap').textContent = tb.power;
   $('resp').innerHTML = tb.resp.map(([k, v]) => row2(esc(k), esc(v))).join('');
@@ -642,8 +704,8 @@ function render() {
   $('curd').textContent = tb.curd;
   $('curnote').textContent = 'A ' + (tb.ra ? clock(tb.ra[0], true) : '–') + '   B ' + (tb.rb ? clock(tb.rb[0], true) : '–');
   $('fit').hidden = !tb.fit; if (tb.fit) $('fit').innerHTML = tb.fit.filter(r => r[1] !== '').map(([k, v]) => row2(esc(k), esc(v))).join('');
-  $('fitcap').textContent = $('fit_on').checked && !tb.fit ? '커서 A와 B를 찍으면 계산함' : '';
-  $('modelcap').textContent = MODEL && MODEL.err ? MODEL.err : (MODEL ? '' : '운전 시작부터 정상상태까지 보이게 한 뒤 누르세요');
+  $('fitcap').textContent = $('fit_on').checked && !tb.fit ? TR('커서 A와 B를 지정하면 계산합니다') : '';
+  $('modelcap').textContent = MODEL && MODEL.err ? MODEL.err : (MODEL ? '' : TR('운전 시작부터 정상상태까지 화면에 보이게 한 뒤 누르세요'));
   $('modelcap').className = 'grow' + (MODEL && MODEL.err ? ' bad' : '');
   $('model').innerHTML = tb.model ? tb.model.filter(r => r[1] !== '').map(([k, v]) => row2(esc(k), esc(v))).join('') : '';
   // 프로그램, 경보 설정: 서버 값이 바뀌었을 때만 다시 채움. 고치는 중(저장 전)인 칸은 건드리지 않음
@@ -659,23 +721,23 @@ function render() {
   }
   if (xj !== miscShown && document.activeElement !== $('p_pre') && !inside('p_set')) {
     miscShown = xj; $('e_hw').value = hw; $('e_rd').value = cfg.rod_d == null ? '' : cfg.rod_d; $('e_rk').value = cfg.rod_k;
-    $('p_pre').innerHTML = Object.keys(cfg.presets || {}).map(k => `<option>${esc(k)}</option>`).join('') || '<option value="">(없음)</option>';
+    $('p_pre').innerHTML = Object.keys(cfg.presets || {}).map(k => `<option>${esc(k)}</option>`).join('') || '<option value="">' + TR('(없음)') + '</option>';
   }
   const cyc = prog.on ? prog.cycles : (val('p_cyc') || 1), plan = planned(prog.on ? cfg.steps : pSteps, last ? last[1] : 25, cyc);
-  $('pstat').innerHTML = row2('상태', prog.on ? `${prog.cycles > 1 ? prog.cycle + ' / ' + prog.cycles + ' 회,  ' : ''}${prog.step || 1} / ${prog.n} 단계,  ${PHASE[prog.phase] || ''}` : '대기') +
-    row2('지금 목표 → 단계 목표', prog.on && prog.sp != null ? `${fx(prog.sp, 1)} → ${fx(prog.target, 1)} °C` : '–') +
-    row2(prog.phase === 'hold' ? '유지 남은 시간' : '이동 남은 시간', prog.on && prog.left != null ? clock(prog.left, true) : '–') +
-    row2('계획 시간 (이동 + 유지)', clock(plan.t, true)) + row2('목표 변경 명령', spcmd === 'spt' ? 'spt (저장 안 함)' : 'sp (1 °C 단위, 보드에 저장)');
+  $('pstat').innerHTML = row2(TR('상태'), prog.on ? `${prog.cycles > 1 ? TR('{0}/{1}회', prog.cycle, prog.cycles) + ',  ' : ''}${TR('{0}/{1}단계', prog.step || 1, prog.n)},  ${PHASE[prog.phase] || ''}` : TR('대기')) +
+    row2(TR('현재 목표 → 단계 목표'), prog.on && prog.sp != null ? `${fx(prog.sp, 1)} → ${fx(prog.target, 1)} °C` : '–') +
+    row2(prog.phase === 'hold' ? TR('유지 남은 시간') : TR('램프 남은 시간'), prog.on && prog.left != null ? clock(prog.left, true) : '–') +
+    row2(TR('계획 시간 (램프 + 유지)'), clock(plan.t, true)) + row2(TR('목표 변경 명령'), spcmd === 'spt' ? TR('spt (보드에 저장 안 함)') : TR('sp (1 °C 단위, 보드에 저장)'));
   $('bpgo').disabled = !on || !!prog.on; $('bpstop').disabled = lost || !prog.on;
   for (const id of ['bstep', 'bpsave', 'bpload', 'bpadd', 'bpdel']) $(id).disabled = lost || !!prog.on;
-  $('astat').innerHTML = row2('걸린 경보', alarm.latched ? esc(alarm.latched) : '없음') + row2('지금 넘은 항목', alarm.active.length ? alarm.active.map(esc).join('<br>') : '없음') +
-    row2('안정', stable.on ? `PV ${fx(stable.mean, 2)} ± ${fx(stable.std, 2)} °C,  ${clock(stable.since, true)}부터` : '아님');
+  $('astat').innerHTML = row2(TR('발생한 경보'), alarm.latched ? esc(alarm.latched) : TR('없음')) + row2(TR('현재 초과 항목'), alarm.active.length ? alarm.active.map(esc).join('<br>') : TR('없음')) +
+    row2(TR('안정'), stable.on ? `PV ${fx(stable.mean, 2)} ± ${fx(stable.std, 2)} °C,  ${TR('{0}부터', clock(stable.since, true))}` : TR('아니오'));
   $('back').disabled = lost || !alarm.latched; $('basave').disabled = lost;
 
   // 설정
   const g = v => v == null ? '–' : String(v);
   $('s_kp').textContent = g(state.kp); $('s_ki').textContent = g(state.ki); $('s_kd').textContent = g(state.kd); $('s_out').textContent = g(state.outmax); $('s_src').textContent = state.src || '–';
-  $('info').innerHTML = [['전력량, 보드 추정 (Wh)', g(state.energy)], ['운전 시간 (분)', g(state.runtime)], ['표본 간격 (s)', '1'], ['펌웨어', state.version || '–']].map(([k, v]) => row2(k, esc(v))).join('');
+  $('info').innerHTML = [[TR('적산 전력량, 보드 추정 (Wh)'), g(state.energy)], [TR('운전 시간 (분)'), g(state.runtime)], [TR('샘플 간격 (s)'), '1'], [TR('펌웨어'), state.version || '–']].map(([k, v]) => row2(k, esc(v))).join('');
   $('bpid').disabled = $('btune').disabled = !on; $('bhw').disabled = lost;
 
   if (shownEv !== events || $('ev').dataset.n !== String(events.length)) {
@@ -687,8 +749,8 @@ function render() {
     }
   }
   $('file').textContent = state.csv_show || state.csv || ''; $('file').title = state.csv || '';
-  $('clock').textContent = lost ? '–' : (L.rows.length + L.held.length) + '점' + (frozen ? '  (화면 정지)' : '');
-  $('fw').textContent = state.version ? '펌웨어 ' + state.version : '–';
+  $('clock').textContent = lost ? '–' : TR('{0}점', L.rows.length + L.held.length) + (frozen ? '  ' + TR('(화면 고정)') : '');
+  $('fw').textContent = state.version ? TR('펌웨어') + ' ' + state.version : '–';
   for (const id of ['bsp', 'brun', 'bstop', 'bclr', 'bcmd']) $(id).disabled = !on;
   for (const id of ['bmeta', 'bnew', 'bpng', 'bstats', 'bpart', 'brec']) $(id).disabled = lost;
   $('bmark').disabled = lost || !!V; $('brep').disabled = lost || !!V; $('bhold').disabled = !!V;
@@ -700,15 +762,15 @@ function render() {
   }
   for (const b of document.querySelectorAll('[data-win]')) b.classList.toggle('on', !sel && +b.dataset.win === win);
   $('bhold').classList.toggle('on', frozen);
-  $('selnote').textContent = sel ? '선택 구간' : '';
-  $('vnote').hidden = $('blive').hidden = !V; if (V) $('vnote').textContent = '지난 기록 보는 중: ' + (V.meta.name || V.id) + '  (' + (V.started || '').replace('T', ' ').slice(0, 16) + ')';
+  $('selnote').textContent = sel ? TR('선택 구간') : '';
+  $('vnote').hidden = $('blive').hidden = !V; if (V) $('vnote').textContent = TR('지난 기록 보기: ') + (V.meta.name || V.id) + '  (' + (V.started || '').replace('T', ' ').slice(0, 16) + ')';
   $('legend').innerHTML = SER.map(([k, c]) => `<button class="${vis[k] ? '' : 'off'}" data-k="${k}"><span class="chip"><i style="background:${PAL.screen[c]}"></i></span>${esc(label(k))}</button>`).join('') +
-    (REF ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.ref}"></i></span>비교: ${esc(REF.name)}</span>` : '') + (MODEL && !MODEL.err ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.model}"></i></span>모델</span>` : '') + (FIT ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.fit}"></i></span>맞춤</span>` : '');
+    (REF ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.ref}"></i></span>${TR('비교')}: ${esc(REF.name)}</span>` : '') + (MODEL && !MODEL.err ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.model}"></i></span>${TR('모델')}</span>` : '') + (FIT ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.fit}"></i></span>${TR('피팅')}</span>` : '');
   draw(); thermo(); draw2(); drawPlan(plan);
 }
 function drawSteps() {
-  $('steps').innerHTML = '<tr><th>단계</th><th>목표 (°C)</th><th>속도 (°C/분), 0 = 바로</th><th>유지 (분)</th><th></th></tr>' + pSteps.map((s, i) =>
-    `<tr><td>${i + 1}</td>` + ['target', 'rate', 'hold'].map(k => `<td><input type="number" step="any" min="0" data-i="${i}" data-f="${k}" value="${s[k]}"></td>`).join('') + `<td><button data-del="${i}">삭제</button></td></tr>`).join('');
+  $('steps').innerHTML = `<tr><th>${TR('단계')}</th><th>${TR('목표 (°C)')}</th><th>${TR('속도 (°C/분), 0 = 즉시')}</th><th>${TR('유지 (분)')}</th><th></th></tr>` + pSteps.map((s, i) =>
+    `<tr><td>${i + 1}</td>` + ['target', 'rate', 'hold'].map(k => `<td><input type="number" step="any" min="0" data-i="${i}" data-f="${k}" value="${s[k]}"></td>`).join('') + `<td><button data-del="${i}">${TR('삭제')}</button></td></tr>`).join('');
 }
 
 // ---------- 차트 ----------
@@ -728,7 +790,7 @@ function timeAxis(t0, t1, PW) {                                 // 시간 눈금
   const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 28800, 86400];
   const ts = steps.find(s => (t1 - t0) / s <= Math.max(3, Math.floor(PW / 90))) || 86400, p2 = n => String(n).padStart(2, '0'), long = t1 >= 3600;
   const fmt = t => { t = Math.round(t); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), q = t % 60; return long ? h + ':' + p2(m) + (ts < 60 ? ':' + p2(q) : '') : Math.floor(t / 60) + ':' + p2(q); };
-  return { ts, fmt, unit: '시간 (' + (long ? '시:분' + (ts < 60 ? ':초' : '') : '분:초') + ')' };
+  return { ts, fmt, unit: TR('시간') + ' (' + (long ? TR('시:분') + (ts < 60 ? TR(':초') : '') : TR('분:초')) + ')' };
 }
 function draw(forFile) {
   const [c, W, H] = setup($('cv')), P = forFile ? PAL.print : PAL.screen;
@@ -762,8 +824,8 @@ function draw(forFile) {
     c.fillStyle = P.text; c.fillText(ax.fmt(t), x, yOut + hOut + 4);
   }
   c.fillStyle = P.text; c.fillText(ax.unit, Lm + PW / 2, H - 14);
-  c.save(); c.translate(10, T + hT / 2); c.rotate(-Math.PI / 2); c.textBaseline = 'middle'; c.fillText('온도 (°C)', 0, 0); c.restore();
-  c.save(); c.translate(10, yOut + hOut / 2); c.rotate(-Math.PI / 2); c.textBaseline = 'middle'; c.fillText('출력 (%)', 0, 0); c.restore();
+  c.save(); c.translate(10, T + hT / 2); c.rotate(-Math.PI / 2); c.textBaseline = 'middle'; c.fillText(TR('온도 (°C)'), 0, 0); c.restore();
+  c.save(); c.translate(10, yOut + hOut / 2); c.rotate(-Math.PI / 2); c.textBaseline = 'middle'; c.fillText(TR('출력 (%)'), 0, 0); c.restore();
 
   // 상태 띠: 운전, 오토튜닝, 알람
   const mcol = { 1: P.m1, 2: P.m2, 3: P.m3 };
@@ -839,7 +901,7 @@ function draw(forFile) {
   if (forFile) {                                                  // 그림으로 저장할 때만 범례와 실험 이름을 차트 위에 넣음
     c.textAlign = 'left'; c.textBaseline = 'middle'; let x = Lm;
     const items = SER.filter(([k]) => vis[k]).map(([k, col]) => [P[col], label(k), k === 'SP' ? [5, 3] : []]);
-    if (REF) items.push([P.ref, '비교: ' + REF.name, [5, 3]]); if (MODEL && !MODEL.err) items.push([P.model, '모델', [7, 3]]); if (FIT) items.push([P.fit, '맞춤 τ = ' + FIT.tau.toFixed(0) + ' s', []]);
+    if (REF) items.push([P.ref, TR('비교') + ': ' + REF.name, [5, 3]]); if (MODEL && !MODEL.err) items.push([P.model, TR('모델'), [7, 3]]); if (FIT) items.push([P.fit, TR('피팅') + ' τ = ' + FIT.tau.toFixed(0) + ' s', []]);
     for (const [col, s, dash] of items) {
       c.strokeStyle = col; c.lineWidth = 2; c.setLineDash(dash); c.beginPath(); c.moveTo(x, 14); c.lineTo(x + 18, 14); c.stroke(); c.setLineDash([]);
       c.fillStyle = P.text; c.fillText(s, x + 23, 14); x += c.measureText(s).width + 38;
@@ -872,25 +934,25 @@ function draw2() {
   let series = [], xr = [t0, t1], yr = null, xl = '', yl = '', xfmt = null, cap = '', bars = null, dots = null, prof = null;
   const push = (name, col, f) => { const pts = []; for (let i = i0; i < i1; i += step) { const y = f(i); pts.push([rows[i][0], y == null || !isFinite(y) ? null : y]); } series.push({ name, col, pts }); };
   if (view === 'rate') {
-    yl = '기울기 (°C/분)'; push(label(ch), ch === 'PV' ? P.pv : P[ch.toLowerCase()], i => { const s = stat(j, lower(rows[i][0] - w), i + 1); return s && s.n >= 5 ? s.slope : null; });
-    const s = stat(j, i0, i1); cap = s ? `구간 전체 기울기 ${sgn(s.slope, 3)} °C/분` : '';
+    yl = TR('기울기 (°C/분)'); push(label(ch), ch === 'PV' ? P.pv : P[ch.toLowerCase()], i => { const s = stat(j, lower(rows[i][0] - w), i + 1); return s && s.n >= 5 ? s.slope : null; });
+    const s = stat(j, i0, i1); cap = s ? TR('구간 전체 기울기 {0} °C/분', sgn(s.slope, 3)) : '';
   } else if (view === 'err') {
     yl = 'PV − SP (°C)'; push('PV − SP', P.pv, i => rows[i][1] == null || rows[i][2] == null ? null : rows[i][1] - rows[i][2]);
     let n = 0, s = 0, s2 = 0, mx = 0; for (let i = i0; i < i1; i++) { const a = rows[i][1], b = rows[i][2]; if (a == null || b == null) continue; const e = a - b; n++; s += e; s2 += e * e; mx = Math.max(mx, Math.abs(e)); }
-    cap = n ? `평균 ${sgn(s / n, 3)},  RMS ${Math.sqrt(s2 / n).toFixed(3)},  최대 |편차| ${mx.toFixed(2)} °C` : '';
+    cap = n ? TR('평균 {0},  RMS {1},  최대 |편차| {2} °C', sgn(s / n, 3), Math.sqrt(s2 / n).toFixed(3), mx.toFixed(2)) : '';
   } else if (view === 'diff') {
-    yl = '차이 (°C)'; const d = (a, b) => i => rows[i][a] == null || rows[i][b] == null ? null : rows[i][a] - rows[i][b];
+    yl = TR('차이 (°C)'); const d = (a, b) => i => rows[i][a] == null || rows[i][b] == null ? null : rows[i][a] - rows[i][b];
     push('T1 − T2', P.t1, d(4, 5)); push('T2 − T3', P.t2, d(5, 6)); push('T3 − T4', P.t3, d(6, 7));
-    push('최대 − 최소', P.pv, i => { const v = rows[i].slice(4, 8).filter(x => x != null); return v.length >= 2 ? Math.max(...v) - Math.min(...v) : null; });
+    push(TR('최대 − 최소'), P.pv, i => { const v = rows[i].slice(4, 8).filter(x => x != null); return v.length >= 2 ? Math.max(...v) - Math.min(...v) : null; });
   } else if (view === 'hist') {
-    const s = stat(j, i0, i1); xl = label(ch) + ' (°C)'; yl = '횟수';
+    const s = stat(j, i0, i1); xl = label(ch) + ' (°C)'; yl = TR('빈도');
     if (s && s.max > s.min) {
       const nb = 30, cnt = new Array(nb).fill(0), bw = (s.max - s.min) / nb; for (let i = i0; i < i1; i++) { const v = rows[i][j]; if (v != null) cnt[Math.min(nb - 1, Math.floor((v - s.min) / bw))]++; }
       bars = { cnt, lo: s.min, bw, mean: s.mean, std: s.std }; xr = [s.min - bw, s.max + bw]; yr = [0, Math.max(...cnt) * 1.1];
-      cap = `평균 ${s.mean.toFixed(3)},  표준편차 ${fx(s.std, 3)},  범위 ${(s.max - s.min).toFixed(2)} °C,  n = ${s.n}`;
+      cap = TR('평균 {0},  표준편차 {1},  범위 {2} °C,  n = {3}', s.mean.toFixed(3), fx(s.std, 3), (s.max - s.min).toFixed(2), s.n);
     }
   } else if (view === 'prof') {                                 // 열전대 좌표(mm)에 따른 온도와 직선 기울기. 커서 A가 있으면 그 시각, 없으면 마지막 줄
-    xl = '위치 (mm)'; yl = '온도 (°C)'; const pos = meta.pos || [], ir = curs[0] != null ? nearest(curs[0]) : rows.length - 1, r = rows[ir], pts = [];
+    xl = TR('위치 (mm)'); yl = TR('온도 (°C)'); const pos = meta.pos || [], ir = curs[0] != null ? nearest(curs[0]) : rows.length - 1, r = rows[ir], pts = [];
     for (let i = 0; i < 4; i++) if (pos[i] != null && r && r[4 + i] != null) pts.push([pos[i], r[4 + i], i]);
     if (pts.length >= 2) {
       const n = pts.length; let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const [x, y] of pts) { sx += x; sy += y; sxx += x * x; sxy += x * y; }
@@ -898,10 +960,10 @@ function draw2() {
       const px = (Math.max(...xs) - Math.min(...xs)) * 0.1 || 1, py = (Math.max(...ys) - Math.min(...ys)) * 0.2 || 1;
       xr = [Math.min(...xs) - px, Math.max(...xs) + px]; yr = [Math.min(...ys) - py, Math.max(...ys) + py]; prof = { pts, a, b };
       const area = cfg.rod_d ? Math.PI * Math.pow(cfg.rod_d / 2000, 2) : null;
-      cap = `${clock(r[0], true)} ${curs[0] != null ? '(커서 A)' : '(마지막)'}   기울기 ${sgn(a, 4)} °C/mm` + (area ? `,   전도 열량 약 ${(cfg.rod_k * area * Math.abs(a) * 1000).toFixed(2)} W  (지름 ${cfg.rod_d} mm, k ${cfg.rod_k})` : '');
-    } else { prof = { pts: [] }; xr = [0, 100]; yr = [0, 100]; cap = '좌표(mm)를 넣은 채널이 둘 이상 읽혀야 함 (실험 탭)'; }
+      cap = `${clock(r[0], true)} ${curs[0] != null ? TR('(커서 A)') : TR('(마지막)')}   ${TR('기울기')} ${sgn(a, 4)} °C/mm` + (area ? ',   ' + TR('전도 열량 약 {0} W  (지름 {1} mm, k {2})', (cfg.rod_k * area * Math.abs(a) * 1000).toFixed(2), cfg.rod_d, cfg.rod_k) : '');
+    } else { prof = { pts: [] }; xr = [0, 100]; yr = [0, 100]; cap = TR('좌표(mm)를 입력한 채널이 2개 이상 측정되어야 합니다 (실험 탭)'); }
   } else {
-    xl = label(ch) + ' (°C)'; yl = '출력 (%)'; dots = []; const s = stat(j, i0, i1);
+    xl = label(ch) + ' (°C)'; yl = TR('출력 (%)'); dots = []; const s = stat(j, i0, i1);
     for (let i = i0; i < i1; i += Math.max(1, Math.ceil((i1 - i0) / 4000))) if (rows[i][j] != null && rows[i][3] != null) dots.push([rows[i][j], rows[i][3]]);
     if (s && s.max > s.min) { const p = (s.max - s.min) * 0.05; xr = [s.min - p, s.max + p]; } else xr = [0, 100]; yr = [-3, 103];
   }
@@ -926,10 +988,10 @@ function draw2() {
     c.textAlign = 'left'; c.textBaseline = 'bottom';
     for (const [x, y, i] of prof.pts) { c.fillStyle = P['t' + (i + 1)]; c.beginPath(); c.arc(X(x), Y(y), 4.5, 0, Math.PI * 2); c.fill(); c.fillStyle = '#fff'; c.fillText('T' + (i + 1) + '  ' + y.toFixed(2), X(x) + 7, Y(y) - 3); }
   }
-  else for (const s of series) { c.strokeStyle = s.col; c.lineWidth = s.name === '최대 − 최소' ? 1.8 : 1.3; c.beginPath(); let pen = false; for (const [x, y] of s.pts) { if (y == null) { pen = false; continue; } if (pen) c.lineTo(X(x), Y(y)); else { c.moveTo(X(x), Y(y)); pen = true; } } c.stroke(); }
+  else for (const s of series) { c.strokeStyle = s.col; c.lineWidth = s.name === TR('최대 − 최소') ? 1.8 : 1.3; c.beginPath(); let pen = false; for (const [x, y] of s.pts) { if (y == null) { pen = false; continue; } if (pen) c.lineTo(X(x), Y(y)); else { c.moveTo(X(x), Y(y)); pen = true; } } c.stroke(); }
   c.restore(); c.lineWidth = 1; c.strokeStyle = '#000'; c.strokeRect(Lm - 0.5, T - 0.5, PW + 1, PH + 1);
   if (series.length > 1) { c.textAlign = 'left'; c.textBaseline = 'middle'; let x = Lm + 8; for (const s of series) { c.fillStyle = s.col; c.fillRect(x, T + 9, 12, 2); c.fillStyle = '#fff'; c.fillText(s.name, x + 16, T + 10); x += c.measureText(s.name).width + 34; } }
-  if (!bars && !dots && !prof && !series.some(s => s.pts.some(p => p[1] != null)) || (view === 'hist' && !bars) || (dots && !dots.length) || (prof && prof.pts.length < 2)) { c.fillStyle = '#b0b0b0'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('이 구간에는 그릴 값이 없음', Lm + PW / 2, T + PH / 2); }
+  if (!bars && !dots && !prof && !series.some(s => s.pts.some(p => p[1] != null)) || (view === 'hist' && !bars) || (dots && !dots.length) || (prof && prof.pts.length < 2)) { c.fillStyle = '#b0b0b0'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(TR('이 구간에는 표시할 데이터가 없습니다'), Lm + PW / 2, T + PH / 2); }
   $('ancap').textContent = cap;
 }
 // 프로그램 탭의 작은 계획 곡선
@@ -991,12 +1053,12 @@ $('p_alarm').addEventListener('input', e => { if (e.target.id !== 'a_beep') aDir
 $('btall').onclick = () => { $('btall').classList.toggle('on', $('pages').classList.toggle('tall')); render(); };
 function applySp() {
   const v = parseFloat($('sp').value);
-  if (!(v >= 0 && v <= 300)) return say({ ok: false, msg: '목표 온도는 0~300 °C' });
+  if (!(v >= 0 && v <= 300)) return say({ ok: false, msg: TR('목표 온도는 0~300 °C 범위여야 합니다') });
   $('sp').dataset.shown = ''; send('sp ' + v);
 }
 $('bsp').onclick = applySp;
 $('sp').onkeydown = e => { if (e.key === 'Enter') applySp(); };
-$('brun').onclick = async () => { if (await ask('목표 ' + fx(state.sp, 1) + ' °C로 히터를 켭니다.')) send('run'); };
+$('brun').onclick = async () => { if (await ask(TR('목표 {0} °C로 히터를 켭니다.', fx(state.sp, 1)))) send('run'); };
 $('bstop').onclick = () => prog.on ? post('/api/prog', { on: false }).then(d => say(d)) : send('stop');
 $('bclr').onclick = () => send('clear');
 function sendCmd() { const v = $('cmd').value.trim(); if (v) { send(v); $('cmd').value = ''; } }
@@ -1008,7 +1070,7 @@ $('mark').onkeydown = e => { if (e.key === 'Enter') addMark(); };
 const formMeta = () => ({ name: $('m_name').value, sample: $('m_sample').value, memo: $('m_memo').value, labels: [0, 1, 2, 3].map(i => $('m_l' + i).value), pos: [0, 1, 2, 3].map(i => val('m_p' + i)) });
 $('bmeta').onclick = async () => { metaShown = ''; say(await post('/api/meta', formMeta())); };
 $('bnew').onclick = async () => {
-  if (!(await ask('지금 파일을 닫고 새 파일에 기록을 시작합니다. 차트와 통계도 처음부터 다시 시작합니다.'))) return;
+  if (!(await ask(TR('현재 파일을 닫고 새 파일에 기록을 시작합니다. 차트와 통계도 처음부터 다시 시작합니다.')))) return;
   metaShown = ''; say(await post('/api/new', formMeta()));
 };
 const rid = () => V ? V.id : undefined, tag = () => { const [t0, t1] = range(); return Math.round(t0) + '-' + Math.round(t1) + 's'; };
@@ -1017,13 +1079,13 @@ $('bpng').onclick = async () => say(await post('/api/png', { data: png(), tag: t
 $('bstats').onclick = async () => { const [t0, t1] = range(), tb = tables(); say(await post('/api/stats', { t0, t1, rid: rid(), rows: tb.stats.map(r => ({ ch: r.k === 'OUT' ? 'OUT' : label(r.k), ...(r.s || {}) })) })); };
 $('bpart').onclick = async () => { const [t0, t1] = range(); say(await post('/api/export', { t0, t1, rid: rid() })); };
 $('brep').onclick = async () => {
-  const tb = tables(), T = [{ title: '구간 통계', head: ['채널', '현재', '평균', '표준편차', '최소', '최대', '기울기 (°C/분)'], rows: tb.stats.map(r => r.cells) }];
+  const tb = tables(), T = [{ title: TR('구간 통계'), head: [TR('채널'), TR('현재'), TR('평균'), TR('표준편차'), TR('최소'), TR('최대'), TR('기울기 (°C/분)')], rows: tb.stats.map(r => r.cells) }];
   if (tb.power) T[0].rows.push([tb.power]);
-  T.push({ title: '응답 특성 (가장 최근 운전 구간)', rows: tb.resp });
-  if (tb.ra || tb.rb) T.push({ title: '커서', head: tb.curHead, rows: tb.cur.concat(tb.curd ? [[tb.curd]] : []) });
-  if (tb.fit) T.push({ title: '지수 맞춤', rows: tb.fit.filter(r => r[1] !== '') });
-  if (tb.model) T.push({ title: '열 모델', rows: tb.model.filter(r => r[1] !== '') });
-  if (cfg.steps.length) T.push({ title: '온도 프로그램 (저장된 것)', head: ['단계', '목표 (°C)', '속도 (°C/분)', '유지 (분)'], rows: cfg.steps.map((s, i) => [i + 1, s.target, s.rate > 0 ? s.rate : '바로', s.hold]).concat([['반복 ' + (cfg.cycles || 1) + '회,  도달 ±' + cfg.tol + ' °C,  ' + (cfg.end_stop ? '끝나면 정지' : '끝나도 유지')]]) });
+  T.push({ title: TR('응답 특성 (가장 최근 운전 구간)'), rows: tb.resp });
+  if (tb.ra || tb.rb) T.push({ title: TR('커서'), head: tb.curHead, rows: tb.cur.concat(tb.curd ? [[tb.curd]] : []) });
+  if (tb.fit) T.push({ title: TR('지수 피팅'), rows: tb.fit.filter(r => r[1] !== '') });
+  if (tb.model) T.push({ title: TR('열 모델'), rows: tb.model.filter(r => r[1] !== '') });
+  if (cfg.steps.length) T.push({ title: TR('온도 프로그램 (저장된 설정)'), head: [TR('단계'), TR('목표 (°C)'), TR('속도 (°C/분)'), TR('유지 (분)')], rows: cfg.steps.map((s, i) => [i + 1, s.target, s.rate > 0 ? s.rate : TR('즉시'), s.hold]).concat([[TR('반복 {0}회,  도달 판정 ±{1} °C,  ', cfg.cycles || 1, cfg.tol) + (cfg.end_stop ? TR('종료 후 정지') : TR('종료 후 목표 유지'))]]) });
   say(await post('/api/report', { png: png(), tag: tag(), range: tb.range, tables: T }));
 };
 $('bhold').onclick = () => { frozen = !frozen; if (!frozen) { for (const x of L.held) L.rows.push(x); L.held = []; } render(); };
@@ -1039,7 +1101,7 @@ $('port').onchange = async () => { portsShown = ''; say(await post('/api/port', 
 $('bopen').onclick = async () => say(await post('/api/open'));
 $('bsim').onclick = async () => {
   const on = !state.sim;
-  if (!(await ask(on ? '가상 보드로 연습합니다. 실제 히터는 켜지지 않고, 기록은 연습 폴더에 따로 남습니다.' : '연습을 끝내고 실물 보드로 돌아갑니다.'))) return;
+  if (!(await ask(on ? TR('가상 보드로 연습합니다. 실제 히터는 켜지지 않으며, 기록은 연습 폴더에 따로 저장됩니다.') : TR('연습을 종료하고 실물 보드로 돌아갑니다.')))) return;
   if (V) { V = null; showData(); } REF = null; say(await post('/api/sim', { on }));
 };
 // 큰 숫자 화면
@@ -1050,17 +1112,17 @@ const formProg = () => ({ steps: pSteps.map(s => ({ target: s.target, rate: s.ra
 $('bstep').onclick = () => { const p = pSteps[pSteps.length - 1]; pSteps.push({ target: p ? p.target : 100, rate: p ? p.rate : 5, hold: p ? p.hold : 10 }); pDirty = true; drawSteps(); render(); };
 $('bpsave').onclick = async () => { if (say(await post('/api/cfg', formProg()))) { pDirty = false; progShown = ''; } };
 $('bpgo').onclick = async () => {
-  if (!pSteps.length) return say({ ok: false, msg: '단계가 없습니다' });
-  const last = L.rows[L.rows.length - 1], f = formProg(), txt = pSteps.map((s, i) => `${i + 1}단계  ${s.target} °C,  ${s.rate > 0 ? s.rate + ' °C/분' : '바로'},  유지 ${s.hold}분`).join('\n');
-  if (!(await ask('프로그램 운전을 시작합니다. 히터가 켜집니다.\n\n' + txt + (f.cycles > 1 ? '\n× ' + f.cycles + '회 반복' : '') + '\n\n계획 시간 ' + clock(planned(pSteps, last ? last[1] : null, f.cycles).t, true) + (f.end_stop ? ',  끝나면 정지' : ',  끝나도 마지막 목표 유지')))) return;
+  if (!pSteps.length) return say({ ok: false, msg: TR('단계가 없습니다') });
+  const last = L.rows[L.rows.length - 1], f = formProg(), txt = pSteps.map((s, i) => TR('{0}단계  {1} °C,  {2},  유지 {3}분', i + 1, s.target, s.rate > 0 ? s.rate + ' ' + TR('°C/분') : TR('즉시'), s.hold)).join('\n');
+  if (!(await ask(TR('프로그램 운전을 시작합니다. 히터가 켜집니다.') + '\n\n' + txt + (f.cycles > 1 ? '\n' + TR('× {0}회 반복', f.cycles) : '') + '\n\n' + TR('계획 시간') + ' ' + clock(planned(pSteps, last ? last[1] : null, f.cycles).t, true) + ',  ' + (f.end_stop ? TR('종료 후 정지') : TR('종료 후 목표 유지'))))) return;
   const d = await post('/api/cfg', f); if (!d.ok) return say(d);
   pDirty = false; progShown = '';
   say(await post('/api/prog', { on: true }));
 };
 $('bpstop').onclick = async () => say(await post('/api/prog', { on: false }));
-$('bpload').onclick = () => { const p = (cfg.presets || {})[$('p_pre').value]; if (!p) return; pSteps = p.steps.map(s => ({ ...s })); drawSteps(); $('p_cyc').value = p.cycles; $('p_tol').value = p.tol; $('p_end').checked = !!p.end_stop; pDirty = true; say({ ok: true, msg: '프리셋 불러옴: ' + $('p_pre').value + ' (저장이나 시작을 눌러야 적용)' }); render(); };
-$('bpadd').onclick = async () => { const n = $('p_name').value.trim(); if (!n) return say({ ok: false, msg: '프리셋 이름을 쓰세요' }); const pre = { ...(cfg.presets || {}), [n]: formProg() }; say(await post('/api/cfg', { presets: pre }), '프리셋 저장: ' + n); $('p_name').value = ''; };
-$('bpdel').onclick = async () => { const n = $('p_pre').value; if (!n || !(await ask('프리셋 "' + n + '"을 지웁니다.'))) return; const pre = { ...(cfg.presets || {}) }; delete pre[n]; say(await post('/api/cfg', { presets: pre }), '프리셋 삭제: ' + n); };
+$('bpload').onclick = () => { const p = (cfg.presets || {})[$('p_pre').value]; if (!p) return; pSteps = p.steps.map(s => ({ ...s })); drawSteps(); $('p_cyc').value = p.cycles; $('p_tol').value = p.tol; $('p_end').checked = !!p.end_stop; pDirty = true; say({ ok: true, msg: TR('프리셋 불러옴: {0} (저장 또는 시작을 눌러야 적용됩니다)', $('p_pre').value) }); render(); };
+$('bpadd').onclick = async () => { const n = $('p_name').value.trim(); if (!n) return say({ ok: false, msg: TR('프리셋 이름을 입력하세요') }); const pre = { ...(cfg.presets || {}), [n]: formProg() }; say(await post('/api/cfg', { presets: pre }), TR('프리셋 저장: ') + n); $('p_name').value = ''; };
+$('bpdel').onclick = async () => { const n = $('p_pre').value; if (!n || !(await ask(TR('프리셋 "{0}"을(를) 삭제합니다.', n)))) return; const pre = { ...(cfg.presets || {}) }; delete pre[n]; say(await post('/api/cfg', { presets: pre }), TR('프리셋 삭제: ') + n); };
 // 경보
 $('basave').onclick = async () => { if (say(await post('/api/cfg', { hi: [0, 1, 2, 3].map(i => val('a_h' + i)), spread: val('a_sp'), auto_stop: $('a_stop').checked, stab_tol: val('a_tol'), stab_rate: val('a_rate'), stab_min: val('a_min'), notify: $('a_notify').checked }))) { aDirty = false; alarmShown = ''; } };
 $('back').onclick = async () => say(await post('/api/ack'));
@@ -1070,16 +1132,16 @@ $('bpid').onclick = async () => {
   const cmds = [];
   for (const [id, c, lo, hi] of [['e_kp', 'kp', 0, 1e4], ['e_ki', 'ki', 0, 1e4], ['e_kd', 'kd', 0, 1e5], ['e_out', 'out', 10, 100]]) {
     const v = val(id); if (v == null) continue;
-    if (!(v >= lo && v <= hi)) return say({ ok: false, msg: c + ' 값이 범위를 벗어남' });
+    if (!(v >= lo && v <= hi)) return say({ ok: false, msg: TR('{0} 값이 범위를 벗어났습니다', c) });
     cmds.push(c + ' ' + v);
   }
   if ($('e_src').value) cmds.push('src ' + $('e_src').value);
-  if (!cmds.length) return say({ ok: false, msg: '새 값이 없습니다' });
-  if (!(await ask('보드 설정을 바꿉니다.\n\n' + cmds.join('\n')))) return;
+  if (!cmds.length) return say({ ok: false, msg: TR('변경할 값이 없습니다') });
+  if (!(await ask(TR('보드 설정을 변경합니다.') + '\n\n' + cmds.join('\n')))) return;
   for (const c of cmds) if (!(await send(c))) return;
   for (const id of ['e_kp', 'e_ki', 'e_kd', 'e_out', 'e_src']) $(id).value = '';
 };
-$('btune').onclick = async () => { if (await ask('오토튜닝을 시작합니다. 히터가 켜지고 목표 ' + fx(state.sp, 1) + ' °C 근처에서 온도를 여러 번 오르내립니다. 끝나면 게인이 보드에 저장됩니다.')) send('tune'); };
+$('btune').onclick = async () => { if (await ask(TR('오토튜닝을 시작합니다. 히터가 켜지고 목표 {0} °C 부근에서 온도가 여러 번 오르내립니다. 완료되면 게인이 보드에 저장됩니다.', fx(state.sp, 1)))) send('tune'); };
 $('bhw').onclick = async () => { miscShown = ''; say(await post('/api/cfg', { heater_w: val('e_hw'), rod_d: val('e_rd'), rod_k: val('e_rk') })); };
 // 모델
 $('bmodel').onclick = () => { MODEL = identify(); render(); };
@@ -1089,18 +1151,18 @@ async function loadRecs() {
   recsAt = Date.now();
   try {
     const d = await (await fetch('/api/records', { cache: 'no-store' })).json();
-    $('reccap').textContent = d.records.length + '개';
-    $('recs').innerHTML = '<tr><th>시작</th><th>실험 이름</th><th>시료</th><th>줄 수</th><th>펌웨어</th><th></th></tr>' + d.records.map(r =>
-      `<tr class="${r.current ? 'cur' : ''}"><td>${esc((r.started || '').replace('T', ' ').slice(0, 19))}</td><td>${esc(r.name || '')}${r.current ? ' (기록 중)' : ''}</td><td>${esc(r.sample || '')}</td><td>${r.rows == null ? '–' : r.rows}</td><td>${esc(r.fw || '')}</td>` +
-      `<td>${r.current ? '' : `<button data-view="${esc(r.id)}">보기</button> <button data-ref="${esc(r.id)}">겹치기</button>`}</td></tr>`).join('');
-  } catch (e) { $('reccap').textContent = '목록을 읽지 못함'; }
+    $('reccap').textContent = TR('{0}개', d.records.length);
+    $('recs').innerHTML = `<tr><th>${TR('시작 시각')}</th><th>${TR('실험 이름')}</th><th>${TR('시료')}</th><th>${TR('줄 수')}</th><th>${TR('펌웨어')}</th><th></th></tr>` + d.records.map(r =>
+      `<tr class="${r.current ? 'cur' : ''}"><td>${esc((r.started || '').replace('T', ' ').slice(0, 19))}</td><td>${esc(r.name || '')}${r.current ? ' ' + TR('(기록 중)') : ''}</td><td>${esc(r.sample || '')}</td><td>${r.rows == null ? '–' : r.rows}</td><td>${esc(r.fw || '')}</td>` +
+      `<td>${r.current ? '' : `<button data-view="${esc(r.id)}">${TR('보기')}</button> <button data-ref="${esc(r.id)}">${TR('겹치기')}</button>`}</td></tr>`).join('');
+  } catch (e) { $('reccap').textContent = TR('목록을 읽지 못했습니다'); }
 }
 async function openRec(id, asRef) {
   try {
     const r = await fetch('/api/record?id=' + encodeURIComponent(id), { cache: 'no-store' }); if (!r.ok) throw 0; const d = await r.json();
-    if (asRef) { REF = { id, name: d.meta.name || id.replace('heater_', ''), rows: d.rows, align: $('ref_al').checked }; say({ ok: true, msg: '겹침: ' + REF.name + ' (' + d.rows.length + '줄)' }); render(); }
-    else { V = d; if (frozen) $('bhold').click(); showData(); say({ ok: true, msg: '지난 기록: ' + (d.meta.name || id) + ' (' + d.rows.length + '줄)' }); }
-  } catch (e) { say({ ok: false, msg: '기록을 읽지 못함' }); }
+    if (asRef) { REF = { id, name: d.meta.name || id.replace('heater_', ''), rows: d.rows, align: $('ref_al').checked }; say({ ok: true, msg: TR('겹쳐 보기: {0} ({1}줄)', REF.name, d.rows.length) }); render(); }
+    else { V = d; if (frozen) $('bhold').click(); showData(); say({ ok: true, msg: TR('지난 기록: {0} ({1}줄)', d.meta.name || id, d.rows.length) }); }
+  } catch (e) { say({ ok: false, msg: TR('기록을 읽지 못했습니다') }); }
 }
 $('brec').onclick = loadRecs;
 $('bref0').onclick = () => { REF = null; render(); };
@@ -1132,15 +1194,41 @@ cv.addEventListener('wheel', e => {                              // 휠: 마우�
 }, { passive: false });
 cv.addEventListener('dblclick', () => { sel = null; win = 0; curs = [null, null]; render(); });
 document.addEventListener('keydown', e => {                      // 단축키: 스페이스 표시, h 화면 정지, c 커서 지움, b 큰 화면
-  if (e.metaKey || e.ctrlKey || e.altKey || $('dlg').open) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || $('dlg').open || $('help').open) return;
   if (e.key === 'Escape' && !$('big').hidden) return bigToggle();
   if (e.target.closest && e.target.closest('input, select, textarea, button')) return;
-  if (e.key === ' ') { e.preventDefault(); addMark(); } else if (e.key === 'h') { if (!V) $('bhold').click(); } else if (e.key === 'c') $('bcur').click(); else if (e.key === 'b') bigToggle();
+  if (e.key === ' ') { e.preventDefault(); addMark(); } else if (e.key === 'h') { if (!V) $('bhold').click(); } else if (e.key === 'c') $('bcur').click(); else if (e.key === 'b') bigToggle(); else if (e.key === '?') $('bhelp').click();
 });
 const ro = new ResizeObserver(() => { draw(); thermo(); draw2(); }); ro.observe($('cvwrap')); ro.observe($('thwrap')); ro.observe($('pages'));
 for (const k of location.hash.slice(1).split(',')) {              // 주소 끝에 #p_an,diff,tall 처럼 쓰면 그 탭과 보기로 열림
   const t = document.querySelector(`[data-tab="${k}"]`); if (t) t.click(); else if (k === 'tall') $('btall').click(); else if ([...$('an_view').options].some(o => o.value === k)) $('an_view').value = k;
 }
+// ---------- 툴바: 아이콘을 넣고, data-do 버튼은 패널의 같은 버튼을 누른다 ----------
+const IC = {
+  new: '<path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3M6.5 9.5h3M8 8v3"/>', folder: '<path d="M1.5 4h4.5l1.5 1.5h7v7.5h-13z"/>',
+  run: '<path d="M4.5 2.5l8.5 5.5-8.5 5.5z" fill="#1c8a2c" stroke="#0d5a18"/>', stop: '<rect x="3.5" y="3.5" width="9" height="9" fill="#c41e1e" stroke="#7a0f0f"/>',
+  reset: '<path d="M12.6 8.6a4.7 4.7 0 1 1-1.2-3.8"/><path d="M11.8 1.8v3.2H8.6"/>', mark: '<path d="M4 14.5v-12M4 3h8l-2 2.5 2 2.5H4"/>',
+  hold: '<path d="M5.5 3.5v9M10.5 3.5v9" stroke-width="2.2"/>', cursor: '<path d="M3.5 2v12M12.5 2v12" stroke-dasharray="2 1.5"/><path d="M6.3 6.3l3.4 3.4M9.7 6.3l-3.4 3.4"/>',
+  image: '<rect x="1.5" y="3" width="13" height="10"/><path d="M3 11.5l3.5-4 2.5 3 2-2 2 3"/>', csv: '<rect x="1.5" y="2.5" width="13" height="11"/><path d="M1.5 6h13M1.5 9.5h13M6 2.5v11M10.5 2.5v11"/>',
+  sigma: '<path d="M11.5 3.5h-7l4 4.5-4 4.5h7"/>', report: '<path d="M3.5 1.5h9v13h-9z"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3"/>',
+  big: '<path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/>', tall: '<path d="M2 2.5h12M2 13.5h12M8 5v6M6 7l2-2 2 2M6 9l2 2 2-2"/>',
+  help: '<circle cx="8" cy="8" r="6.3"/><path d="M6.2 6.3a1.9 1.9 0 1 1 2.8 1.6c-.7.4-1 .8-1 1.6M8 11.7v.3"/>',
+};
+for (const b of document.querySelectorAll('#toolbar [data-ic]')) b.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 16 16" aria-hidden="true">' + IC[b.dataset.ic] + '</svg>');
+const proxies = [...document.querySelectorAll('#toolbar [data-do]')];
+function syncToolbar() { for (const b of proxies) { const s = $(b.dataset.do); b.disabled = s.disabled; b.classList.toggle('on', s.classList.contains('on')); } }
+for (const b of proxies) b.onclick = () => { $(b.dataset.do).click(); syncToolbar(); };
+setInterval(syncToolbar, 250); syncToolbar();
+$('lang').value = LANG;
+$('lang').onchange = async () => { const d = await post('/api/cfg', { lang: $('lang').value }); if (d.ok) location.reload(); else { say(d); $('lang').value = LANG; } };
+$('bhelp').onclick = () => {
+  $('h_title').textContent = TR('밴드 히터 PID 기록') + (appVer ? '  ' + appVer : '');
+  $('h_keys').innerHTML = [[TR('스페이스'), TR('현재 시각에 마커 추가')], ['h', TR('화면 고정 / 해제')], ['c', TR('커서 지우기')], ['b', TR('큰 화면 켜기 / 끄기')], ['?', TR('도움말')],
+    [TR('차트 클릭'), TR('커서 A, B 지정')], [TR('차트 드래그'), TR('구간 선택')], [TR('휠'), TR('확대·축소 (좌우로 굴리면 이동)')], [TR('더블 클릭'), TR('전체 구간 보기, 커서 지우기')]].map(([k, v]) => row2(esc(k), esc(v))).join('');
+  $('h_about').innerHTML = [[TR('펌웨어'), state.version || '–'], [TR('기록 파일'), $('file').textContent || '–'], [TR('라이선스'), 'MIT'], [TR('소스'), 'github.com/jongsu-king/band-heater-pid']].map(([k, v]) => row2(esc(k), esc(v))).join('');
+  $('help').showModal(); $('helpok').focus();
+};
+$('helpok').onclick = () => $('help').close();
 poll();
 </script>
 </html>

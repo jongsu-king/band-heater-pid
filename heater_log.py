@@ -12,11 +12,12 @@
     uv run heater_log.py --port /dev/cu.usbserial-XXXX
     uv run heater_log.py --name "Cu블록 150도"   실험 이름을 미리 정함
     uv run heater_log.py --sim 30              보드 없이 가상 보드로 연습 (30배속)
+    uv run heater_log.py --lang en             영어 화면 (화면의 툴바에서도 바꿀 수 있음)
     uv run heater_app.py                       브라우저 대신 전용 창으로 (응용프로그램은 이것을 묶은 것)
 
 기록은 기본으로 ~/Documents/밴드히터_기록 에 실험마다 파일 네 개로 남는다 (--out 으로 변경).
   heater_날짜_시각_이름.csv           1초마다 한 줄 (열 설명은 _meta.json 의 columns)
-  heater_날짜_시각_이름_events.txt    운전·정지·알람·설정 변경·보낸 명령·표시(마커)
+  heater_날짜_시각_이름_events.txt    운전·정지·경보·설정 변경·보낸 명령·마커
   heater_날짜_시각_이름_raw.log       보드가 보낸 줄 전부 (받은 시각과 함께, 가공하지 않음)
   heater_날짜_시각_이름_meta.json     실험 이름·시료·메모, 채널 이름, 펌웨어, PID 설정, 열 설명
 
@@ -27,7 +28,7 @@ import argparse, atexit, base64, datetime, glob, html, json, os, re, secrets, si
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-VERSION = '1.4'
+VERSION = '1.5'
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = getattr(sys, '_MEIPASS', HERE)    # 응용프로그램으로 묶였을 때는 그 안의 자원 폴더
 USB_VID = {0x0403, 0x1A86, 0x10C4, 0x2341, 0x2A03, 0x067B}        # FTDI, CH340, CP210x, Arduino, Prolific
@@ -48,7 +49,79 @@ COLUMNS = {
     'OUT_pct': 'PID 출력 = SSR 시분할 켜짐 비율 [%]',
     'T1_degC': '열전대 채널 1 [°C] (읽히지 않으면 빈칸)', 'T2_degC': '열전대 채널 2 [°C]',
     'T3_degC': '열전대 채널 3 [°C]', 'T4_degC': '열전대 채널 4 [°C]',
-    'mode': 'STOP / RUN / TUNE(오토튜닝) / FAULT(알람). 보드에 3초마다 물어 갱신하므로 버튼으로 바꾼 직후 몇 초는 늦을 수 있음',
+    'mode': 'STOP / RUN / TUNE(오토튜닝) / FAULT(경보). 보드에 3초마다 물어 갱신하므로 버튼으로 바꾼 직후 몇 초는 늦을 수 있음',
+}
+
+
+# 영어판: 화면·사건 기록·알림으로 나가는 문구를 내보내는 자리에서 바꾼다. 맞는 규칙이 없으면 원문 그대로.
+EN_EXACT = {
+    '보드를 찾는 중입니다 (USB를 연결하세요)': 'Looking for the board (plug in the USB cable)', '보드를 찾는 중입니다': 'Looking for the board',
+    '가상 보드를 켜는 중입니다': 'Starting the virtual board', '가상 보드가 종료됨': 'Virtual board ended', '가상 보드 파일이 없습니다': 'virtual board file is missing',
+    'USB가 빠졌거나 다른 프로그램이 포트를 사용 중입니다': 'USB unplugged, or the port is in use by another program',
+    '다른 프로그램이 사용 중 (아두이노 시리얼 모니터를 닫으세요)': 'in use by another program (close the Arduino serial monitor)', '포트를 찾을 수 없음': 'port not found',
+    '연결 끊김': 'Disconnected', 'PC 경보 확인': 'PC alarm acknowledged', '보드가 연결돼 있지 않습니다': 'The board is not connected',
+    '마커를 추가했습니다': 'Marker added', '실험 정보를 저장했습니다': 'Experiment info saved', '저장했습니다': 'Saved', '경보를 확인했습니다': 'Alarm acknowledged',
+    '그림 형식이 아닙니다': 'Not an image', '그림을 읽지 못했습니다': 'Could not read the image', '기록 폴더를 열었습니다': 'Record folder opened',
+    '이 컴퓨터에는 가상 보드가 없습니다': 'No virtual board on this computer', '연습 모드를 켰습니다 (실제 히터는 켜지지 않음)': 'Practice mode on (the real heater stays off)',
+    '실물 보드로 돌아왔습니다': 'Back to the real board', '목록에 없는 포트입니다': 'That port is not in the list', '포트: 자동': 'Port: auto',
+    '이미 프로그램 운전 중입니다': 'A program is already running', '보드 경보 상태입니다. 먼저 경보를 해제하세요': 'The board is in alarm. Clear the alarm first',
+    '오토튜닝 중입니다': 'Auto-tune is running', '단계가 없습니다': 'The program has no steps', '현재 온도를 읽지 못했습니다': 'No temperature reading',
+    '프로그램 운전 시작': 'Program started', '프로그램 운전 중이 아닙니다': 'No program is running', '프로그램 중지, 히터 정지': 'Program stopped, heater off',
+    '구간이 올바르지 않습니다': 'Invalid range', '기록 파일이 없습니다': 'No record file', '저장할 통계가 없습니다': 'No statistics to save',
+    '차트 그림이 없습니다': 'No chart image', '차트 그림이 올바르지 않습니다': 'Bad chart image', '기록을 찾지 못했습니다': 'Record not found',
+    '보드 연결이 끊겼습니다': 'Board disconnected', '밴드 히터': 'Band heater',
+    '기록 파일: %s': 'Record file: %s', '화면: %s   (끝내려면 Ctrl+C)': 'Page: %s   (Ctrl+C to quit)', '종료. 기록 파일: %s': 'Stopped. Record file: %s',
+    '프로그램 중지': 'Program stopped', '프로그램 끝: 히터 정지': 'Program finished: heater off', '프로그램 끝: 마지막 목표 유지': 'Program finished: holding the last setpoint',
+    '프로그램 중단': 'Program aborted', '프로그램 중단: 연결 끊김': 'Program aborted: disconnected', '프로그램 중단: 보드가 정지됨': 'Program aborted: the board was stopped',
+    '프로그램 중단: 운전 시작 실패': 'Program aborted: could not start', '프로그램 중단: 온도 값 없음': 'Program aborted: no temperature reading',
+    # 보고서
+    '실험': 'Experiment', '이름': 'Name', '시료': 'Sample', '메모': 'Notes', '기록 시작': 'Record started', '보고서 작성': 'Report written', '구간': 'Range',
+    '기록 줄 수': 'Rows recorded', '보드와 설정': 'Board and settings', '포트': 'Port', '펌웨어': 'Firmware', '가상 보드': 'Virtual board', '예': 'yes', '아니오': 'no',
+    '출력 한계 (%)': 'Output limit (%)', '제어 기준': 'Control sensor', '목표 SP (°C)': 'Setpoint SP (°C)', 'PC 경보 상한 T1~T4 (°C)': 'PC alarm limits T1–T4 (°C)',
+    'PC 경보 채널 간 차이 (°C)': 'PC alarm channel spread (°C)', '히터 정격 (W), 전력 추정용': 'Heater rating (W), for the power estimate', '차트': 'Chart',
+    '이벤트 기록': 'Event log', '경과 (s)': 'Elapsed (s)', '종류': 'Kind', '내용': 'Text', '파일': 'Files', '데이터': 'Data', '이벤트': 'Events', '원본 로그': 'Raw log', '메타데이터': 'Metadata',
+}
+_al = lambda t: t.replace('채널 간 차이', 'channel spread').replace('상한', 'limit')
+EN_RX = [(re.compile(a), b) for a, b in [
+    (r'^연결됨: 가상 보드 (\S+)배속$', r'Connected: virtual board ×\1'), (r'^가상 보드 (\S+)배속$', r'Virtual board ×\1'), (r'^연결됨: (.*)$', r'Connected: \1'),
+    (r'^연결 끊김: (.*)$', lambda m: 'Disconnected: ' + to_en(m[1])), (r'^(\S+) 포트를 열 수 없습니다: (.*)$', lambda m: 'Cannot open %s: %s' % (m[1], to_en(m[2]))),
+    (r'^가상 보드를 켜지 못했습니다: (.*)$', lambda m: 'Could not start the virtual board: ' + to_en(m[1])),
+    (r'^변경: (.*)$', r'Changed: \1'),
+    (r'^프로그램: (.*)$', r'Program: \1'), (r'^경보: (.*)$', r'Alarm: \1'),
+    (r'^PC 경보: 상한 (\S+), 채널 차이 (\S+), 경보 시 정지 (켬|끔)$', lambda m: 'PC alarm: limits %s, channel spread %s, stop on alarm %s' % (m[1], m[2], 'on' if m[3] == '켬' else 'off')),
+    (r'^PC 경보: (.*)$', lambda m: 'PC alarm: ' + _al(m[1])), (r'^(T\d .*상한.*|채널 간 차이.*)$', lambda m: _al(m[1])),
+    (r'^안정: (PV .*) \(목표 (\S+), 최근 (\S+)분\)$', r'Stable: \1 (setpoint \2, last \3 min)'),
+    (r'^프로그램 시작: (\d+)단계 × (\d+)회, 목표 변경 명령 (\w+)( .*)?$', lambda m: 'Program started: %s steps × %s cycles, setpoint command %s%s' % (m[1], m[2], m[3], ' (firmware older than v1.4: 1 °C steps, saved to the board on every change)' if m[4] else '')),
+    (r'^(?:(\d+)회째 )?(\d+)단계: (.*) °C, (.*), 유지 (\S+)분$', lambda m: '%sStep %s: %s °C, %s, hold %s min' % ('Cycle %s, ' % m[1] if m[1] else '', m[2], m[3], 'at once' if m[4] == '즉시' else m[4].replace('°C/분', '°C/min'), m[5])),
+    (r'^(\d+)단계 도달: (.*)$', r'Step \1 reached: \2'), (r'^프로그램 중단: 보드 경보 \((.*)\)$', r'Program aborted: board alarm (\1)'),
+    (r'^연결 직후 수신한 (\d+)바이트 무시 .*$', r'Ignored \1 bytes received right after connecting (stale data from before the board booted)'),
+    (r'^비정상적으로 빠르게 수신된 데이터 (\d+)줄 무시$', r'Ignored \1 data lines that arrived abnormally fast'),
+    (r'^마커 (\d+)$', r'Marker \1'), (r'^표시 (\d+)$', r'Marker \1'), (r'^상태 (\S+ → .*)$', r'\1'), (r'^설정 (SP=.*)$', r'\1'),
+    (r'^설정 변경: (.*)$', r'Changed: \1'), (r'^(PC|프로그램|경보) 명령: (.*)$', lambda m: {'PC': 'PC', '프로그램': 'Program', '경보': 'Alarm'}[m[1]] + ': ' + m[2]), (r'^사용할 수 없는 명령: (.*)$', r'Command not allowed: \1'), (r'^새 파일: (.*)$', r'New file: \1'),
+    (r'^그림 저장: (.*)$', r'Image saved: \1'), (r'^포트: (.*)$', r'Port: \1'), (r'^구간 저장: (.*) \((\d+)줄\)$', r'Range saved: \1 (\2 rows)'),
+    (r'^통계 저장: (.*)$', r'Statistics saved: \1'), (r'^보고서 저장: (.*)$', r'Report saved: \1'), (r'^보드 경보: (.*)$', r'Board alarm: \1'),
+    (r'^보고서 (.*)$', r'Report \1'), (r'^(T\d) 위치$', r'\1 position'),
+]]
+
+
+def to_en(text):
+    if not isinstance(text, str) or not text:
+        return text
+    if text in EN_EXACT:
+        return EN_EXACT[text]
+    for rx, rep in EN_RX:
+        m = rx.match(text)
+        if m:
+            return rep(m) if callable(rep) else m.expand(rep)
+    return text
+
+
+COLUMNS_EN = {
+    'time': 'computer clock (local time, to the millisecond)', 'elapsed_s': 'time since this record file was started [s]',
+    'PV_degC': 'temperature used for control (the control channel, or average / maximum) [°C]', 'SP_degC': 'setpoint [°C]',
+    'OUT_pct': 'PID output = SSR on-time share in each window [%]', 'T1_degC': 'thermocouple channel 1 [°C] (empty when unreadable)',
+    'T2_degC': 'thermocouple channel 2 [°C]', 'T3_degC': 'thermocouple channel 3 [°C]', 'T4_degC': 'thermocouple channel 4 [°C]',
+    'mode': 'STOP / RUN / TUNE (auto-tune) / FAULT (alarm). Refreshed from the board every 3 s, so it can lag a few seconds after a button press',
 }
 
 
@@ -129,7 +202,7 @@ class Hub:
         self.ports, self.want = [], ''
         self.gen = 0
         self.meta = dict(name=clean(name, 60), sample='', memo='', labels=['', '', '', ''], pos=[None, None, None, None])
-        self.state = dict(connected=False, port='', note='보드를 찾는 중', mode='', fault='', version='',
+        self.state = dict(connected=False, port='', note='보드를 찾는 중입니다', mode='', fault='', version='',
                           sp=None, kp=None, ki=None, kd=None, outmax=None, src='',
                           relay='', ssr='', energy=None, runtime=None, csv='', sim=False)
         self.csv = self.evf = self.raw = None
@@ -137,7 +210,7 @@ class Hub:
         # PC 쪽 설정: 온도 프로그램(승온·유지 단계)과 PC 경보. 기록 폴더의 설정.json 에 남는다
         self.cfg = dict(steps=[dict(target=80.0, rate=5.0, hold=10.0)], cycles=1, tol=1.0, end_stop=True,
                         hi=[None, None, None, None], spread=None, auto_stop=True, heater_w=400.0, presets={},
-                        stab_tol=1.0, stab_rate=0.2, stab_min=3.0, notify=False, rod_d=None, rod_k=398.0)
+                        stab_tol=1.0, stab_rate=0.2, stab_min=3.0, notify=False, rod_d=None, rod_k=398.0, lang='ko')
         self.prog = dict(on=False, step=0, n=0, phase='', sp=None, target=None, left=None)
         self.alarm = dict(active=[], latched='', n=0)
         self._pstop = threading.Event()
@@ -149,6 +222,10 @@ class Hub:
                 self._merge_cfg(json.load(f))
         except (OSError, ValueError):
             pass
+
+    def L(self, text):
+        """지금 고른 언어의 문구. 영어를 골랐을 때만 바꾼다."""
+        return to_en(text) if self.cfg.get('lang') == 'en' else text
 
     # ---------- PC 쪽 설정 ----------
     def _merge_cfg(self, d):
@@ -179,6 +256,8 @@ class Hub:
             c['rod_d'] = f(d['rod_d'], 0.1, 1000)
         if 'notify' in d:
             c['notify'] = bool(d['notify'])
+        if d.get('lang') in ('ko', 'en'):
+            c['lang'] = d['lang']
         if isinstance(d.get('presets'), dict):                     # 이름 붙인 프로그램 묶음. 통째로 바꿔 넣는다
             pre = {}
             for k, v in list(d['presets'].items())[:30]:
@@ -208,7 +287,7 @@ class Hub:
                 json.dump(c, f, ensure_ascii=False, indent=1)
             os.replace(tmp, os.path.join(self.base_dir, '설정.json'))
             if self.csv and before != json.dumps([c['hi'], c['spread'], c['auto_stop']]):
-                self._event('set', 'PC 경보 설정: 상한 %s, 채널 차이 %s, 경보 때 정지 %s' % (
+                self._event('set', 'PC 경보: 상한 %s, 채널 차이 %s, 경보 시 정지 %s' % (
                     '/'.join('-' if v is None else '%g' % v for v in c['hi']),
                     '-' if c['spread'] is None else '%g' % c['spread'], '켬' if c['auto_stop'] else '끔'))
 
@@ -217,7 +296,8 @@ class Hub:
         if not self.cfg.get('notify') or sys.platform != 'darwin':
             return
         q = lambda x: str(x).replace('\\', ' ').replace('"', "'")[:180]
-        title = '밴드 히터' + (' · ' + self.meta['name'] if self.meta['name'] else '')
+        text = self.L(text)
+        title = self.L('밴드 히터') + (' · ' + self.meta['name'] if self.meta['name'] else '')
         try:
             subprocess.Popen(['osascript', '-e', 'display notification "%s" with title "%s"' % (q(text), q(title))],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -300,11 +380,11 @@ class Hub:
         with self.lock:
             s = self.state
             if self.prog['on']:
-                return False, '이미 프로그램 운전 중'
+                return False, '이미 프로그램 운전 중입니다'
             if not s['connected']:
                 return False, '보드가 연결돼 있지 않습니다'
             if s['mode'] == 'FAULT':
-                return False, '알람 상태입니다. 먼저 알람을 해제하세요'
+                return False, '보드 경보 상태입니다. 먼저 경보를 해제하세요'
             if s['mode'] == 'TUNE':
                 return False, '오토튜닝 중입니다'
             steps = [dict(x) for x in self.cfg['steps']]
@@ -321,7 +401,7 @@ class Hub:
 
     def prog_stop(self):
         if not self.prog['on']:
-            return False, '프로그램 운전 중이 아님'
+            return False, '프로그램 운전 중이 아닙니다'
         self._pstop.set()
         self.send('stop', who='프로그램')
         return True, '프로그램 중지, 히터 정지'
@@ -349,9 +429,9 @@ class Hub:
             if stop.is_set():
                 why[0] = why[0] or '중지'
             elif self.link is not link or not s['connected']:
-                why[0] = '중단: 연결이 끊김'
+                why[0] = '중단: 연결 끊김'
             elif s['mode'] == 'FAULT':
-                why[0] = '중단: 보드 알람 (%s)' % s['fault']
+                why[0] = '중단: 보드 경보 (%s)' % s['fault']
             elif need_run and s['mode'] == 'STOP':
                 why[0] = '중단: 보드가 정지됨'
             else:
@@ -370,7 +450,7 @@ class Hub:
             ev('프로그램 시작: %d단계 × %d회, 목표 변경 명령 %s%s' % (len(steps), cycles, cmd, '' if volatile else ' (펌웨어 v1.4 미만: 1 °C 단위, 바꿀 때마다 보드에 저장됨)'))
             cur = pv()
             if cur is None:
-                why[0] = '중단: 현재 온도 없음'
+                why[0] = '중단: 온도 값 없음'
                 return
             if self.state['mode'] != 'RUN':
                 setsp(cur)
@@ -379,12 +459,12 @@ class Hub:
                 while self.state['mode'] != 'RUN' and time.monotonic() < end and ok(False):
                     stop.wait(0.05)
                 if self.state['mode'] != 'RUN':
-                    why[0] = why[0] or '중단: 운전을 시작하지 못함'
+                    why[0] = why[0] or '중단: 운전 시작 실패'
                     return
             for cyc, i, st in [(c, i, st) for c in range(1, cycles + 1) for i, st in enumerate(steps, 1)]:
                 target, rate, hold = st['target'], st['rate'], st['hold']
                 status(cycle=cyc)
-                ev('%s%d단계: %.1f → %.1f °C, %s, 유지 %g분' % ('%d회째 ' % cyc if cycles > 1 else '', i, cur, target, ('%g °C/분' % rate) if rate > 0 else '바로', hold))
+                ev('%s%d단계: %.1f → %.1f °C, %s, 유지 %g분' % ('%d회째 ' % cyc if cycles > 1 else '', i, cur, target, ('%g °C/분' % rate) if rate > 0 else '즉시', hold))
                 ts = clock()
                 if rate > 0 and abs(target - cur) > 1e-6:
                     dur, sign = abs(target - cur) / rate * 60.0, (1 if target > cur else -1)
@@ -432,10 +512,10 @@ class Hub:
     def export_part(self, t0, t1, rid=None):
         t0, t1 = num(t0), num(t1)
         if t0 is None or t1 is None or t1 <= t0:
-            return False, '구간이 잘못됨'
+            return False, '구간이 올바르지 않습니다'
         with self.lock:
             if not self.csv:
-                return False, '기록 파일이 없음'
+                return False, '기록 파일이 없습니다'
             base = self._base_for(rid)
             src, dst = base + '.csv', '%s_part_%d-%ds.csv' % (base, round(t0), round(t1))
         n = 0
@@ -454,10 +534,10 @@ class Hub:
     def save_stats(self, d):
         rows, t0, t1 = d.get('rows'), num(d.get('t0')), num(d.get('t1'))
         if not isinstance(rows, list) or t0 is None or t1 is None:
-            return False, '통계가 없음'
+            return False, '저장할 통계가 없습니다'
         with self.lock:
             if not self.csv:
-                return False, '기록 파일이 없음'
+                return False, '기록 파일이 없습니다'
             path = self._base_for(d.get('rid')) + '_stats.tsv'
             new = not os.path.exists(path)
             with open(path, 'a', encoding='utf-8') as f:
@@ -523,27 +603,32 @@ class Hub:
             started = j.get('started')
         except (OSError, ValueError):
             started = None
-        return dict(id=rid, rows=rows, events=events, meta=meta, started=started)
+        return dict(id=rid, rows=rows, events=self._ev_out(events), meta=meta, started=started)
 
     # ---------- 보고서: 실험 정보, 설정, 차트 그림, 화면이 계산한 표를 한 HTML 파일로 ----------
     def save_report(self, d):
         png = d.get('png')
         if not isinstance(png, str) or not png.startswith('data:image/png;base64,'):
-            return False, '차트 그림이 없음'
+            return False, '차트 그림이 없습니다'
         try:
             if base64.b64decode(png[22:], validate=True)[:8] != b'\x89PNG\r\n\x1a\n':
-                return False, '차트 그림이 잘못됨'
+                return False, '차트 그림이 올바르지 않습니다'
         except ValueError:
-            return False, '차트 그림이 잘못됨'
+            return False, '차트 그림이 올바르지 않습니다'
         E = lambda x: html.escape('' if x is None else str(x))
         with self.lock:
             if not self.csv:
-                return False, '기록 파일이 없음'
+                return False, '기록 파일이 없습니다'
             s, m, c, base = dict(self.state), dict(self.meta), json.loads(json.dumps(self.cfg)), self.base
             started, events, nrows, port = self.started, list(self.events), self.nrows, self.last_port
         tag = re.sub(r'[^0-9a-z_-]+', '', str(d.get('tag', '')))[:30] or 'all'
 
+        T = self.L
+
         def table(title, head, rows):
+            title, head = T(title), [T(x) for x in head] if head else head
+            if not head:
+                rows = [[T(r[0])] + list(r[1:]) for r in rows]
             h = '<h2>%s</h2><table>' % E(title)
             if head:
                 h += '<tr>' + ''.join('<th>%s</th>' % E(x) for x in head) + '</tr>'
@@ -555,25 +640,25 @@ class Hub:
                                      ['기록 시작', started.strftime('%Y-%m-%d %H:%M:%S')], ['보고서 작성', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
                                      ['구간', d.get('range', '')], ['기록 줄 수', nrows]] +
                        [['T%d 위치' % (i + 1), m['labels'][i]] for i in range(4) if m['labels'][i]]),
-                 table('보드와 설정', None, [['포트', port], ['펌웨어', s['version']], ['가상 보드', '예' if s['sim'] else '아니오'],
+                 table('보드와 설정', None, [['포트', T(port)], ['펌웨어', s['version']], ['가상 보드', T('예' if s['sim'] else '아니오')],
                                           ['Kp / Ki / Kd', '%s / %s / %s' % (g(s['kp']), g(s['ki']), g(s['kd']))],
                                           ['출력 한계 (%)', g(s['outmax'])], ['제어 기준', s['src']], ['목표 SP (°C)', g(s['sp'])],
                                           ['PC 경보 상한 T1~T4 (°C)', ' / '.join(g(v) for v in c['hi'])], ['PC 경보 채널 간 차이 (°C)', g(c['spread'])],
                                           ['히터 정격 (W), 전력 추정용', g(c['heater_w'])]]),
-                 '<h2>차트</h2><img alt="차트" src="%s">' % png]
+                 '<h2>%s</h2><img alt="" src="%s">' % (T('차트'), png)]
         for t in (d.get('tables') or [])[:8]:
             if isinstance(t, dict) and isinstance(t.get('rows'), list):
                 parts.append(table(clean(t.get('title'), 60), [clean(x, 40) for x in (t.get('head') or [])][:12],
                                    [[clean(x, 80) for x in r][:12] for r in t['rows'][:60] if isinstance(r, list)]))
-        parts.append(table('사건 기록', ['경과 (s)', '종류', '내용'], [['%.1f' % e[0], e[1], e[2]] for e in events[-300:]]))
-        parts.append(table('파일', None, [['데이터', os.path.basename(base) + '.csv'], ['사건', os.path.basename(base) + '_events.txt'],
+        parts.append(table('이벤트 기록', ['경과 (s)', '종류', '내용'], [['%.1f' % e[0], e[1], self._ev_text(e[1], e[2])] for e in events[-300:]]))
+        parts.append(table('파일', None, [['데이터', os.path.basename(base) + '.csv'], ['이벤트', os.path.basename(base) + '_events.txt'],
                                           ['원본 로그', os.path.basename(base) + '_raw.log'], ['메타데이터', os.path.basename(base) + '_meta.json']]))
-        doc = ('<!doctype html><html lang="ko"><meta charset="utf-8"><title>%s</title><style>'
+        doc = ('<!doctype html><html lang="' + self.cfg.get('lang', 'ko') + '"><meta charset="utf-8"><title>%s</title><style>'
                'body{font:12px/1.4 "Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#000;max-width:900px;margin:24px auto;padding:0 16px}'
                'h1{font-size:18px;border-bottom:2px solid #000;padding-bottom:4px}h2{font-size:13px;margin:18px 0 4px}'
                'table{border-collapse:collapse;width:100%%}td,th{border:1px solid #888;padding:2px 6px;text-align:left;font-variant-numeric:tabular-nums}'
                'th{background:#e6e6e6;font-weight:400}img{max-width:100%%;border:1px solid #888}@media print{body{margin:0}}'
-               '</style><h1>%s</h1>%s</html>') % (E('보고서 ' + (m['name'] or os.path.basename(base))), E(m['name'] or os.path.basename(base)), ''.join(parts))
+               '</style><h1>%s</h1>%s</html>') % (E(T('보고서 ' + (m['name'] or os.path.basename(base)))), E(m['name'] or os.path.basename(base)), ''.join(parts))
         path, n = '%s_report_%s.html' % (base, tag), 1
         while os.path.exists(path):
             n += 1
@@ -595,7 +680,7 @@ class Hub:
             self.scale = float(sim) if sim else 1.0
             self.want = '' if sim else (port or '')
             self.out_dir = os.path.join(self.base_dir, '연습') if sim else self.base_dir
-            self.state.update(connected=False, port='', note='가상 보드를 켜는 중' if sim else '보드를 찾는 중', mode='', fault='',
+            self.state.update(connected=False, port='', note='가상 보드를 켜는 중입니다' if sim else '보드를 찾는 중입니다', mode='', fault='',
                               version='', sp=None, kp=None, ki=None, kd=None, outmax=None, src='',
                               relay='', ssr='', energy=None, runtime=None, sim=bool(sim))
             if new_file or not self.csv:
@@ -682,7 +767,7 @@ class Hub:
             'settings_at_start': self.first_settings,
             'sample_interval_s': 1.0,
             'rows': self.nrows,
-            'columns': COLUMNS,
+            'columns': COLUMNS_EN if self.cfg.get('lang') == 'en' else COLUMNS,
             'files': {'data': b + '.csv', 'events': b + '_events.txt', 'raw': b + '_raw.log'},
         }
         tmp = self.base + '_meta.json.tmp'
@@ -696,13 +781,23 @@ class Hub:
     def _event(self, kind, text):
         t = self._now()
         self.events.append([t, kind, text])
-        self.evf.write('%s\t%.2f\t%s\t%s\n' % (stamp_ms(), t, kind, text))
+        self.evf.write('%s\t%.2f\t%s\t%s\n' % (stamp_ms(), t, kind, self._ev_text(kind, text)))
+
+    def _ev_text(self, kind, text):
+        if kind == 'board' or (kind == 'mark' and not re.fullmatch(r'(마커|표시) \d+', text)):
+            return text                                            # 보드가 보낸 줄과 사용자가 적은 마커는 원문 그대로
+        return self.L(text)
+
+    def _ev_out(self, events):
+        if self.cfg.get('lang') != 'en':
+            return events
+        return [[e[0], e[1], self._ev_text(e[1], e[2])] for e in events]
 
     def _settings_seen(self):
         s = self.state
         if self.first_settings is None:                            # 이 파일에서 처음 본 설정만 메타데이터에 남긴다
             self.first_settings = {k: s[k] for k in ('sp', 'kp', 'ki', 'kd', 'outmax', 'src')}
-        self._event('set', '설정 SP=%g Kp=%g Ki=%g Kd=%g OUTMAX=%g SRC=%s MODE=%s' %
+        self._event('set', 'SP=%g Kp=%g Ki=%g Kd=%g OUTMAX=%g SRC=%s MODE=%s' %
                     (s['sp'], s['kp'], s['ki'], s['kd'], s['outmax'], s['src'], s['mode']))
 
     def note(self, kind, text):
@@ -713,7 +808,7 @@ class Hub:
     def mark(self, text):
         with self.lock:
             n = sum(1 for e in self.events if e[1] == 'mark') + 1
-            self._event('mark', clean(text, 120) or '표시 %d' % n)
+            self._event('mark', clean(text, 120) or '마커 %d' % n)
 
     # ---------- 받은 줄 ----------
     def feed(self, line, who=None):
@@ -733,7 +828,7 @@ class Hub:
                     return
                 self._tok -= 1.0
                 if self._dropped and now - self._drop_at > 2.0:    # 쏟아짐이 끝난 뒤 한 번만 적는다
-                    self._event('conn', '너무 빨리 들어온 값 줄 %d개를 버림 (보드는 1초에 한 줄)' % self._dropped)
+                    self._event('conn', '비정상적으로 빠르게 수신된 데이터 %d줄 무시' % self._dropped)
                     self._dropped = 0
             if kind is None and not s['sim']:                      # 알 수 없는 줄도 쏟아지면 원본 로그에 다 쓰지 않는다 (몰려 온 50줄까지, 그 뒤 초당 20줄)
                 now = time.monotonic()
@@ -770,9 +865,9 @@ class Hub:
                     self._write_meta()
                 else:
                     if diff:
-                        self._event('set', '설정 변경: ' + ', '.join(diff))
+                        self._event('set', '변경: ' + ', '.join(diff))
                     if old_mode and old_mode != d['mode']:
-                        self._event('mode', '상태 %s → %s%s' % (old_mode, d['mode'], (' (' + d['fault'] + ')') if d['fault'] else ''))
+                        self._event('mode', '%s → %s%s' % (old_mode, d['mode'], (' (' + d['fault'] + ')') if d['fault'] else ''))
             elif kind == 'ac':
                 s.update(d)
             elif kind == 'text':
@@ -787,14 +882,14 @@ class Hub:
                     s['mode'], s['fault'] = 'STOP', ''
                 elif d.startswith('!! FAULT: '):
                     s['mode'], s['fault'] = 'FAULT', d[10:]
-                    self._notify('보드 알람: ' + d[10:])
+                    self._notify('보드 경보: ' + d[10:])
                 elif d == 'Auto-tune start':
                     s['mode'] = 'TUNE'
                 elif d == '# boot':
                     s['sp'], s['mode'] = None, ''                  # 리셋됨: 다음 설정 줄을 새로 적는다
                 self._event('board', d.lstrip('# '))
                 if old_mode and s['mode'] and old_mode != s['mode']:
-                    self._event('mode', '상태 %s → %s%s' % (old_mode, s['mode'], (' (' + s['fault'] + ')') if s['fault'] else ''))
+                    self._event('mode', '%s → %s%s' % (old_mode, s['mode'], (' (' + s['fault'] + ')') if s['fault'] else ''))
 
     def set_conn(self, ok, port='', note='', who=None):
         with self.lock:
@@ -810,7 +905,7 @@ class Hub:
                 self._event('conn', ('연결됨: ' + port) if ok else ('연결 끊김' + (': ' + note if note else '')))
                 if not ok:
                     self.stable.update(on=False, since=None)
-                    self._notify('보드 연결이 끊김')
+                    self._notify('보드 연결이 끊겼습니다')
                 self._write_meta()
 
     # ---------- 웹 화면이 읽어 가는 것 ----------
@@ -819,14 +914,15 @@ class Hub:
             if gen != self.gen:
                 n = ne = 0
             st = dict(self.state)
+            st['note'], st['port'] = self.L(st['note']), self.L(st['port'])
             home = os.path.expanduser('~')
             st['csv_show'] = ('~' + st['csv'][len(home):]) if st['csv'].startswith(home + os.sep) else st['csv']    # 화면에는 홈 폴더를 ~ 로 줄여 보임
-            return dict(gen=self.gen, rows=self.rows[n:n + 20000], total=len(self.rows), events=self.events[ne:],
+            return dict(gen=self.gen, rows=self.rows[n:n + 20000], total=len(self.rows), events=self._ev_out(self.events[ne:]),
                         state=st, meta=dict(self.meta), elapsed=self._now(),
                         ports=list(self.ports), want=self.want, sim_ok=sim_exe() is not None, folder=self.out_dir,
                         cfg=json.loads(json.dumps(self.cfg)), prog=dict(self.prog),
-                        alarm=dict(active=list(self.alarm['active']), latched=self.alarm['latched']), stable=dict(self.stable),
-                        spcmd='spt' if fw_tuple(self.state['version']) >= (1, 4) else 'sp')
+                        alarm=dict(active=[self.L(x) for x in self.alarm['active']], latched=self.L(self.alarm['latched'])), stable=dict(self.stable),
+                        spcmd='spt' if fw_tuple(self.state['version']) >= (1, 4) else 'sp', ver=VERSION)
 
     def _base_for(self, rid):
         """rid 가 있으면 그 지난 기록의 파일 이름 머리, 없으면 지금 기록."""
@@ -871,7 +967,7 @@ class Hub:
     def send(self, cmd, who='PC'):
         cmd = ' '.join(clean(cmd, 40).lower().replace('=', ' ').split())
         if not CMD_OK.match(cmd):
-            return False, '쓸 수 없는 명령: ' + cmd
+            return False, '사용할 수 없는 명령: ' + cmd
         link = self.link
         if not link or not self.state['connected']:
             return False, '보드가 연결돼 있지 않습니다'
@@ -882,7 +978,7 @@ class Hub:
         if who:
             with self.lock:
                 if self.csv:
-                    self._event('cmd', '%s 명령: %s' % (who, cmd))
+                    self._event('cmd', '%s: %s' % (who, cmd))
         return True, cmd
 
 
@@ -924,15 +1020,15 @@ class SerialLink:
         while self.alive:
             port = self.find()
             if not port:
-                hub.set_conn(False, note='보드를 찾는 중 (USB를 꽂으세요)', who=self)
+                hub.set_conn(False, note='보드를 찾는 중입니다 (USB를 연결하세요)', who=self)
                 self.wait(1.5)
                 continue
             try:
                 self.ser = serial.Serial(port, 115200, timeout=0.5)
             except Exception as e:
-                why = ('다른 프로그램이 쓰는 중 (아두이노 시리얼 모니터를 닫으세요)' if 'busy' in str(e).lower()
-                       else '포트가 없음' if 'No such file' in str(e) or 'FileNotFound' in str(e) else str(e)[:80])
-                hub.set_conn(False, note='%s 을 열 수 없음: %s' % (port, why), who=self)
+                why = ('다른 프로그램이 사용 중 (아두이노 시리얼 모니터를 닫으세요)' if 'busy' in str(e).lower()
+                       else '포트를 찾을 수 없음' if 'No such file' in str(e) or 'FileNotFound' in str(e) else str(e)[:80])
+                hub.set_conn(False, note='%s 포트를 열 수 없습니다: %s' % (port, why), who=self)
                 self.wait(2)
                 continue
             hub.set_conn(True, port, who=self)
@@ -957,7 +1053,7 @@ class SerialLink:
                 else:
                     buf = b''                                      # 자동 리셋이 없는 보드: 3초 뒤부터 그냥 받는다
                 if got - len(buf) > 0:
-                    hub.note('conn', '연결 직후 들어온 %d바이트를 버림 (보드가 켜지기 전의 찌꺼기)' % (got - len(buf)))
+                    hub.note('conn', '연결 직후 수신한 %d바이트 무시 (보드 부팅 전 잔여 데이터)' % (got - len(buf)))
                 while b'\n' in buf:                                # 기다리는 동안 받은 부팅 줄을 바로 넘긴다
                     line, buf = buf.split(b'\n', 1)
                     hub.feed(line.decode('ascii', 'replace'), who=self)
@@ -975,7 +1071,7 @@ class SerialLink:
                         self.write('show')                         # 상태·설정·릴레이를 주기적으로 물어봄 (EEPROM에는 쓰지 않는 명령)
             except Exception:
                 if self.alive:
-                    hub.set_conn(False, note='USB가 빠졌거나 다른 프로그램이 포트를 열었음', who=self)
+                    hub.set_conn(False, note='USB가 빠졌거나 다른 프로그램이 포트를 사용 중입니다', who=self)
             try:
                 self.ser.close()
             except Exception:
@@ -1005,9 +1101,9 @@ class SimLink:
         try:
             exe = sim_exe(build=True)
             if not exe:
-                raise RuntimeError('가상 보드 파일이 없음')
+                raise RuntimeError('가상 보드 파일이 없습니다')
         except Exception as e:
-            self.hub.set_conn(False, note='가상 보드를 켜지 못함: %s' % e, who=self)
+            self.hub.set_conn(False, note='가상 보드를 켜지 못했습니다: %s' % e, who=self)
             return
         self.p = subprocess.Popen([exe, 'board', str(self.speed)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   text=True, bufsize=1)
@@ -1016,7 +1112,7 @@ class SimLink:
         for line in self.p.stdout:
             self.hub.feed(line, who=self)
         if self.alive:
-            self.hub.set_conn(False, note='가상 보드가 끝남', who=self)
+            self.hub.set_conn(False, note='가상 보드가 종료됨', who=self)
 
     def poll(self):
         while self.alive and self.p.poll() is None:
@@ -1043,6 +1139,8 @@ def make_handler(hub, token):
 
         def reply(self, code, body, ctype='application/json; charset=utf-8'):
             if not isinstance(body, bytes):
+                if isinstance(body, dict) and isinstance(body.get('msg'), str):
+                    body = dict(body, msg=hub.L(body['msg']))
                 body = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode()
             self.send_response(code)
             self.send_header('Content-Type', ctype)
@@ -1056,7 +1154,7 @@ def make_handler(hub, token):
                 return self.reply(403, {'error': 'forbidden'})
             u = urlparse(self.path)
             if u.path == '/':
-                return self.reply(200, load_page().replace('__TOKEN__', token).encode(), 'text/html; charset=utf-8')
+                return self.reply(200, load_page().replace('__TOKEN__', token).replace('<html lang="ko">', '<html lang="%s">' % hub.cfg.get('lang', 'ko'), 1).encode(), 'text/html; charset=utf-8')
             if u.path == '/api/data':
                 q = parse_qs(u.query)
                 try:
@@ -1068,7 +1166,7 @@ def make_handler(hub, token):
                 return self.reply(200, {'records': hub.records(), 'folder': hub.out_dir})
             if u.path == '/api/record':
                 rec = hub.load_record(parse_qs(u.query).get('id', [''])[0])
-                return self.reply(200, rec) if rec else self.reply(404, {'error': '기록을 찾지 못함'})
+                return self.reply(200, rec) if rec else self.reply(404, {'error': '기록을 찾지 못했습니다'})
             self.reply(404, {'error': 'not found'})
 
         def do_POST(self):
@@ -1088,7 +1186,7 @@ def make_handler(hub, token):
                 return self.reply(200, {'ok': ok, 'msg': msg})
             if self.path == '/api/mark':
                 hub.mark(body.get('text', ''))
-                return self.reply(200, {'ok': True, 'msg': '표시를 남겼습니다'})
+                return self.reply(200, {'ok': True, 'msg': '마커를 추가했습니다'})
             if self.path == '/api/meta':
                 hub.set_meta(body)
                 return self.reply(200, {'ok': True, 'msg': '실험 정보를 저장했습니다'})
@@ -1138,7 +1236,7 @@ def make_handler(hub, token):
 def run_window(url, hub, selftest=None):
     """브라우저 대신 전용 창에 화면을 띄운다 (응용프로그램으로 실행할 때). 창을 닫으면 끝난다."""
     import webview
-    w = webview.create_window('밴드 히터 PID 기록', url, width=1280, height=880, min_size=(1000, 700))
+    w = webview.create_window('Band Heater PID Logger' if hub.cfg.get('lang') == 'en' else '밴드 히터 PID 기록', url, width=1280, height=880, min_size=(1000, 700))
     w.events.closed += hub.close
 
     def probe():                           # 빌드 확인용: 창 안의 화면을 실제로 조작해 보고 결과를 파일에 적은 뒤 닫는다
@@ -1181,6 +1279,7 @@ def main(window=False):
     ap.add_argument('--http-port', type=int, default=8765)
     ap.add_argument('--no-browser', action='store_true', help='브라우저를 자동으로 열지 않음')
     ap.add_argument('--window', action='store_true', help='브라우저 대신 전용 창으로 띄움 (pywebview 필요)')
+    ap.add_argument('--lang', choices=('ko', 'en'), help='화면 언어 (생략하면 지난번에 고른 것)')
     ap.add_argument('--selftest', metavar='FILE', help=argparse.SUPPRESS)
     a, _ = ap.parse_known_args()
     if a.sim is not None and a.sim <= 0:
@@ -1190,6 +1289,8 @@ def main(window=False):
         a.selftest = None                  # 자동 점검은 운전 단추를 누르므로 가상 보드에서만 한다. 실물 보드에서는 절대 돌리지 않는다
 
     hub = Hub(a.out, name=a.name)
+    if a.lang:
+        hub.cfg['lang'] = a.lang
     atexit.register(hub.close)             # 어떤 길로 끝나든 파일을 닫는다 (이미 닫혔으면 아무 일도 안 함)
     hub.start(sim=a.sim, port=a.port)
 
@@ -1218,8 +1319,8 @@ def main(window=False):
             threading.Thread(target=srv.serve_forever, daemon=True).start()
             run_window(url, hub, a.selftest)
         else:
-            print('기록 파일: %s' % hub.state['csv'])
-            print('화면: %s   (끝내려면 Ctrl+C)' % url, flush=True)
+            print(hub.L('기록 파일: %s') % hub.state['csv'])
+            print(hub.L('화면: %s   (끝내려면 Ctrl+C)') % url, flush=True)
             if not a.no_browser:
                 threading.Timer(0.6, webbrowser.open, [url]).start()
             srv.serve_forever()
@@ -1229,7 +1330,7 @@ def main(window=False):
         csv = hub.state['csv']
         hub.close()
         if not window:
-            print('\n끝냄. 기록 파일: %s' % csv)
+            print('\n' + hub.L('종료. 기록 파일: %s') % csv)
 
 
 if __name__ == '__main__':
