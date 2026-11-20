@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>밴드히터 전체 핀맵</title>
+<style>
+:root { --bg:#FFFFFF; --p:#1F1E1D; --s:#5F5E5A; --t:#888780; --surf:#F7F6F2; --bord:#B4B2A9;
+  --am-f:#FAEEDA; --am-s:#854F0B; --am-t:#633806; --co-f:#FAECE7; --co-s:#993C1D; --co-t:#712B13; --gr-f:#F1EFE8; --gr-s:#5F5E5A; --gr-t:#444441; }
+@media (prefers-color-scheme: dark) { :root { --bg:#1F1E1D; --p:#F1EFE8; --s:#B4B2A9; --t:#888780; --surf:#2C2C2A; --bord:#5F5E5A;
+  --am-f:#633806; --am-s:#FAC775; --am-t:#FAEEDA; --co-f:#712B13; --co-s:#F0997B; --co-t:#FAECE7; --gr-f:#444441; --gr-s:#B4B2A9; --gr-t:#F1EFE8; color-scheme: dark; } }
+body { margin:0; background:var(--bg); padding:16px; }
+svg { display:block; width:100%; max-width:760px; height:auto; margin:0 auto; }
+svg text { font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
+.t { font-size:14px; fill:var(--p); } .ts { font-size:12px; fill:var(--s); } .th { font-size:14px; font-weight:600; fill:var(--p); }
+.box { fill:var(--surf); stroke:var(--bord); }
+.leader { stroke:var(--t); stroke-width:0.5; stroke-dasharray:3 3; }
+.c-amber > rect, rect.c-amber, circle.c-amber { fill:var(--am-f); stroke:var(--am-s); } .c-amber > text { fill:var(--am-t); }
+.c-coral > rect, rect.c-coral, circle.c-coral { fill:var(--co-f); stroke:var(--co-s); } .c-coral > text { fill:var(--co-t); }
+.c-gray > rect, rect.c-gray, circle.c-gray { fill:var(--gr-f); stroke:var(--gr-s); } .c-gray > text { fill:var(--gr-t); }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 680 684" role="img" aria-label="밴드히터 컨트롤러 전체 핀맵: 아두이노 나노 핀 30개와 MAX31856 4개, LCD, SSR, LED, HLK-PM01, 택트 스위치 4개의 모든 핀. 같은 이름끼리 연결한다.">
+<rect class="box" x="92" y="66" width="26" height="34" rx="3" stroke-width="0.5"/>
+<text class="ts" x="86" y="83" text-anchor="end" dominant-baseline="central">USB</text>
+<rect class="box" x="116" y="40" width="488" height="86" rx="6" stroke-width="0.5"/>
+<text class="th" x="360" y="83" text-anchor="middle" dominant-baseline="central">Arduino Nano</text>
+<circle class="c-amber" cx="136" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="168" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-amber" cx="200" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-amber" cx="232" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-amber" cx="264" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-amber" cx="296" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-coral" cx="328" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-amber" cx="392" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="488" cy="52" r="5" stroke-width="0.5"/>
+<circle class="c-amber" cx="136" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="232" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="264" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="296" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="328" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="360" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="392" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="488" cy="114" r="5" stroke-width="0.5"/>
+<circle class="c-gray" cx="552" cy="114" r="5" stroke-width="0.5"/>
+<g fill="none" stroke="var(--t)" stroke-width="1">
+<circle cx="360" cy="52" r="5"/><circle cx="424" cy="52" r="5"/><circle cx="456" cy="52" r="5"/><circle cx="520" cy="52" r="5"/><circle cx="552" cy="52" r="5"/><circle cx="584" cy="52" r="5"/>
+<circle cx="168" cy="114" r="5"/><circle cx="200" cy="114" r="5"/><circle cx="424" cy="114" r="5"/><circle cx="456" cy="114" r="5"/><circle cx="520" cy="114" r="5"/><circle cx="584" cy="114" r="5"/>
+</g>
+<text class="th" x="136" y="68" text-anchor="middle" dominant-baseline="central">D12</text>
+<text class="th" x="168" y="68" text-anchor="middle" dominant-baseline="central">D11</text>
+<text class="th" x="200" y="68" text-anchor="middle" dominant-baseline="central">D10</text>
+<text class="th" x="232" y="68" text-anchor="middle" dominant-baseline="central">D9</text>
+<text class="th" x="264" y="68" text-anchor="middle" dominant-baseline="central">D8</text>
+<text class="th" x="296" y="68" text-anchor="middle" dominant-baseline="central">D7</text>
+<text class="th" x="328" y="68" text-anchor="middle" dominant-baseline="central">D6</text>
+<text class="ts" x="360" y="68" text-anchor="middle" dominant-baseline="central">D5</text>
+<text class="th" x="392" y="68" text-anchor="middle" dominant-baseline="central">D4</text>
+<text class="ts" x="424" y="68" text-anchor="middle" dominant-baseline="central">D3</text>
+<text class="ts" x="456" y="68" text-anchor="middle" dominant-baseline="central">D2</text>
+<text class="th" x="488" y="68" text-anchor="middle" dominant-baseline="central">GND</text>
+<text class="ts" x="520" y="68" text-anchor="middle" dominant-baseline="central">RST</text>
+<text class="ts" x="552" y="68" text-anchor="middle" dominant-baseline="central">RX0</text>
+<text class="ts" x="584" y="68" text-anchor="middle" dominant-baseline="central">TX1</text>
+<text class="th" x="136" y="98" text-anchor="middle" dominant-baseline="central">D13</text>
+<text class="ts" x="168" y="98" text-anchor="middle" dominant-baseline="central">3V3</text>
+<text class="ts" x="200" y="98" text-anchor="middle" dominant-baseline="central">AREF</text>
+<text class="th" x="232" y="98" text-anchor="middle" dominant-baseline="central">A0</text>
+<text class="th" x="264" y="98" text-anchor="middle" dominant-baseline="central">A1</text>
+<text class="th" x="296" y="98" text-anchor="middle" dominant-baseline="central">A2</text>
+<text class="th" x="328" y="98" text-anchor="middle" dominant-baseline="central">A3</text>
+<text class="th" x="360" y="98" text-anchor="middle" dominant-baseline="central">A4</text>
+<text class="th" x="392" y="98" text-anchor="middle" dominant-baseline="central">A5</text>
+<text class="ts" x="424" y="98" text-anchor="middle" dominant-baseline="central">A6</text>
+<text class="ts" x="456" y="98" text-anchor="middle" dominant-baseline="central">A7</text>
+<text class="th" x="488" y="98" text-anchor="middle" dominant-baseline="central">5V</text>
+<text class="ts" x="520" y="98" text-anchor="middle" dominant-baseline="central">RST</text>
+<text class="th" x="552" y="98" text-anchor="middle" dominant-baseline="central">GND</text>
+<text class="ts" x="584" y="98" text-anchor="middle" dominant-baseline="central">VIN</text>
+<text class="ts" x="360" y="146" text-anchor="middle" dominant-baseline="central">USB 왼쪽 · 부품 면을 위에서 본 모습</text>
+
+<rect class="box" x="40" y="166" width="141" height="170" rx="6" stroke-width="0.5"/>
+<text class="th" x="52" y="184" dominant-baseline="central">TC1 · MAX31856</text>
+<text class="t" x="52" y="204" dominant-baseline="central">GND</text>
+<line class="leader" x1="88" y1="204" x2="111" y2="204"/>
+<g class="c-gray"><rect x="113" y="196" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="141" y="204" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<text class="t" x="52" y="223" dominant-baseline="central">VCC</text>
+<line class="leader" x1="88" y1="223" x2="111" y2="223"/>
+<g class="c-gray"><rect x="113" y="215" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="141" y="223" text-anchor="middle" dominant-baseline="central">5V</text></g>
+<text class="t" x="52" y="242" dominant-baseline="central">SCK</text>
+<line class="leader" x1="88" y1="242" x2="111" y2="242"/>
+<g class="c-amber"><rect x="113" y="234" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="141" y="242" text-anchor="middle" dominant-baseline="central">D13</text></g>
+<text class="t" x="52" y="261" dominant-baseline="central">SDO</text>
+<line class="leader" x1="88" y1="261" x2="111" y2="261"/>
+<g class="c-amber"><rect x="113" y="253" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="141" y="261" text-anchor="middle" dominant-baseline="central">D12</text></g>
+<text class="t" x="52" y="280" dominant-baseline="central">SDI</text>
+<line class="leader" x1="88" y1="280" x2="111" y2="280"/>
+<g class="c-amber"><rect x="113" y="272" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="141" y="280" text-anchor="middle" dominant-baseline="central">D4</text></g>
+<text class="t" x="52" y="299" dominant-baseline="central">CS</text>
+<line class="leader" x1="88" y1="299" x2="111" y2="299"/>
+<g class="c-amber"><rect x="113" y="291" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="141" y="299" text-anchor="middle" dominant-baseline="central">D10</text></g>
+<text class="t" x="52" y="318" dominant-baseline="central">+ / −</text>
+<g class="c-amber"><rect x="97" y="310" width="72" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="133" y="318" text-anchor="middle" dominant-baseline="central">T형 열전대</text></g>
+<rect class="box" x="193" y="166" width="141" height="170" rx="6" stroke-width="0.5"/>
+<text class="th" x="205" y="184" dominant-baseline="central">TC2 · MAX31856</text>
+<text class="t" x="205" y="204" dominant-baseline="central">GND</text>
+<line class="leader" x1="241" y1="204" x2="264" y2="204"/>
+<g class="c-gray"><rect x="266" y="196" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="294" y="204" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<text class="t" x="205" y="223" dominant-baseline="central">VCC</text>
+<line class="leader" x1="241" y1="223" x2="264" y2="223"/>
+<g class="c-gray"><rect x="266" y="215" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="294" y="223" text-anchor="middle" dominant-baseline="central">5V</text></g>
+<text class="t" x="205" y="242" dominant-baseline="central">SCK</text>
+<line class="leader" x1="241" y1="242" x2="264" y2="242"/>
+<g class="c-amber"><rect x="266" y="234" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="294" y="242" text-anchor="middle" dominant-baseline="central">D13</text></g>
+<text class="t" x="205" y="261" dominant-baseline="central">SDO</text>
+<line class="leader" x1="241" y1="261" x2="264" y2="261"/>
+<g class="c-amber"><rect x="266" y="253" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="294" y="261" text-anchor="middle" dominant-baseline="central">D12</text></g>
+<text class="t" x="205" y="280" dominant-baseline="central">SDI</text>
+<line class="leader" x1="241" y1="280" x2="264" y2="280"/>
+<g class="c-amber"><rect x="266" y="272" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="294" y="280" text-anchor="middle" dominant-baseline="central">D4</text></g>
+<text class="t" x="205" y="299" dominant-baseline="central">CS</text>
+<line class="leader" x1="241" y1="299" x2="264" y2="299"/>
+<g class="c-amber"><rect x="266" y="291" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="294" y="299" text-anchor="middle" dominant-baseline="central">D9</text></g>
+<text class="t" x="205" y="318" dominant-baseline="central">+ / −</text>
+<g class="c-amber"><rect x="250" y="310" width="72" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="286" y="318" text-anchor="middle" dominant-baseline="central">T형 열전대</text></g>
+<rect class="box" x="346" y="166" width="141" height="170" rx="6" stroke-width="0.5"/>
+<text class="th" x="358" y="184" dominant-baseline="central">TC3 · MAX31856</text>
+<text class="t" x="358" y="204" dominant-baseline="central">GND</text>
+<line class="leader" x1="394" y1="204" x2="417" y2="204"/>
+<g class="c-gray"><rect x="419" y="196" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="447" y="204" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<text class="t" x="358" y="223" dominant-baseline="central">VCC</text>
+<line class="leader" x1="394" y1="223" x2="417" y2="223"/>
+<g class="c-gray"><rect x="419" y="215" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="447" y="223" text-anchor="middle" dominant-baseline="central">5V</text></g>
+<text class="t" x="358" y="242" dominant-baseline="central">SCK</text>
+<line class="leader" x1="394" y1="242" x2="417" y2="242"/>
+<g class="c-amber"><rect x="419" y="234" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="447" y="242" text-anchor="middle" dominant-baseline="central">D13</text></g>
+<text class="t" x="358" y="261" dominant-baseline="central">SDO</text>
+<line class="leader" x1="394" y1="261" x2="417" y2="261"/>
+<g class="c-amber"><rect x="419" y="253" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="447" y="261" text-anchor="middle" dominant-baseline="central">D12</text></g>
+<text class="t" x="358" y="280" dominant-baseline="central">SDI</text>
+<line class="leader" x1="394" y1="280" x2="417" y2="280"/>
+<g class="c-amber"><rect x="419" y="272" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="447" y="280" text-anchor="middle" dominant-baseline="central">D4</text></g>
+<text class="t" x="358" y="299" dominant-baseline="central">CS</text>
+<line class="leader" x1="394" y1="299" x2="417" y2="299"/>
+<g class="c-amber"><rect x="419" y="291" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="447" y="299" text-anchor="middle" dominant-baseline="central">D8</text></g>
+<text class="t" x="358" y="318" dominant-baseline="central">+ / −</text>
+<g class="c-amber"><rect x="403" y="310" width="72" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="439" y="318" text-anchor="middle" dominant-baseline="central">T형 열전대</text></g>
+<rect class="box" x="499" y="166" width="141" height="170" rx="6" stroke-width="0.5"/>
+<text class="th" x="511" y="184" dominant-baseline="central">TC4 · MAX31856</text>
+<text class="t" x="511" y="204" dominant-baseline="central">GND</text>
+<line class="leader" x1="547" y1="204" x2="570" y2="204"/>
+<g class="c-gray"><rect x="572" y="196" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="600" y="204" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<text class="t" x="511" y="223" dominant-baseline="central">VCC</text>
+<line class="leader" x1="547" y1="223" x2="570" y2="223"/>
+<g class="c-gray"><rect x="572" y="215" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="600" y="223" text-anchor="middle" dominant-baseline="central">5V</text></g>
+<text class="t" x="511" y="242" dominant-baseline="central">SCK</text>
+<line class="leader" x1="547" y1="242" x2="570" y2="242"/>
+<g class="c-amber"><rect x="572" y="234" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="600" y="242" text-anchor="middle" dominant-baseline="central">D13</text></g>
+<text class="t" x="511" y="261" dominant-baseline="central">SDO</text>
+<line class="leader" x1="547" y1="261" x2="570" y2="261"/>
+<g class="c-amber"><rect x="572" y="253" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="600" y="261" text-anchor="middle" dominant-baseline="central">D12</text></g>
+<text class="t" x="511" y="280" dominant-baseline="central">SDI</text>
+<line class="leader" x1="547" y1="280" x2="570" y2="280"/>
+<g class="c-amber"><rect x="572" y="272" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="600" y="280" text-anchor="middle" dominant-baseline="central">D4</text></g>
+<text class="t" x="511" y="299" dominant-baseline="central">CS</text>
+<line class="leader" x1="547" y1="299" x2="570" y2="299"/>
+<g class="c-amber"><rect x="572" y="291" width="56" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="600" y="299" text-anchor="middle" dominant-baseline="central">D7</text></g>
+<text class="t" x="511" y="318" dominant-baseline="central">+ / −</text>
+<g class="c-amber"><rect x="556" y="310" width="72" height="16" rx="4" stroke-width="0.5"/><text class="ts" x="592" y="318" text-anchor="middle" dominant-baseline="central">T형 열전대</text></g>
+
+<rect class="box" x="40" y="352" width="125" height="150" rx="6" stroke-width="0.5"/>
+<text class="th" x="52" y="370" dominant-baseline="central">LCD I2C</text>
+<text class="t" x="52" y="394" dominant-baseline="central">GND</text>
+<text class="t" x="52" y="416" dominant-baseline="central">VCC</text>
+<text class="t" x="52" y="438" dominant-baseline="central">SDA</text>
+<text class="t" x="52" y="460" dominant-baseline="central">SCL</text>
+<line class="leader" x1="88" y1="394" x2="107" y2="394"/><line class="leader" x1="88" y1="416" x2="107" y2="416"/><line class="leader" x1="88" y1="438" x2="107" y2="438"/><line class="leader" x1="88" y1="460" x2="107" y2="460"/>
+<g class="c-gray"><rect x="109" y="385" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="131" y="394" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<g class="c-gray"><rect x="109" y="407" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="131" y="416" text-anchor="middle" dominant-baseline="central">5V</text></g>
+<g class="c-gray"><rect x="109" y="429" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="131" y="438" text-anchor="middle" dominant-baseline="central">A4</text></g>
+<g class="c-gray"><rect x="109" y="451" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="131" y="460" text-anchor="middle" dominant-baseline="central">A5</text></g>
+
+<rect class="box" x="178" y="352" width="185" height="150" rx="6" stroke-width="0.5"/>
+<text class="th" x="190" y="370" dominant-baseline="central">SSR-25DA</text>
+<text class="t" x="190" y="394" dominant-baseline="central">3 (+)</text>
+<text class="t" x="190" y="416" dominant-baseline="central">4 (−)</text>
+<text class="t" x="190" y="438" dominant-baseline="central">1</text>
+<text class="t" x="190" y="460" dominant-baseline="central">2</text>
+<text class="ts" x="190" y="484" dominant-baseline="central">3번–4번 사이 10kΩ</text>
+<line class="leader" x1="230" y1="394" x2="305" y2="394"/><line class="leader" x1="230" y1="416" x2="305" y2="416"/><line class="leader" x1="204" y1="438" x2="253" y2="438"/><line class="leader" x1="204" y1="460" x2="253" y2="460"/>
+<g class="c-coral"><rect x="307" y="385" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="329" y="394" text-anchor="middle" dominant-baseline="central">D6</text></g>
+<g class="c-gray"><rect x="307" y="407" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="329" y="416" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<g class="c-coral"><rect x="255" y="429" width="96" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="303" y="438" text-anchor="middle" dominant-baseline="central">L: F1·S1 뒤</text></g>
+<g class="c-coral"><rect x="255" y="451" width="96" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="303" y="460" text-anchor="middle" dominant-baseline="central">TS1 → 히터</text></g>
+
+<rect class="box" x="376" y="352" width="125" height="150" rx="6" stroke-width="0.5"/>
+<text class="th" x="388" y="370" dominant-baseline="central">알람 LED</text>
+<text class="t" x="388" y="394" dominant-baseline="central">+</text>
+<text class="t" x="388" y="416" dominant-baseline="central">−</text>
+<text class="ts" x="388" y="440" dominant-baseline="central">긴 다리가 +</text>
+<line class="leader" x1="402" y1="416" x2="443" y2="416"/>
+<g class="c-gray"><rect x="409" y="385" width="80" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="449" y="394" text-anchor="middle" dominant-baseline="central">D11 · 220Ω</text></g>
+<g class="c-gray"><rect x="445" y="407" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="467" y="416" text-anchor="middle" dominant-baseline="central">GND</text></g>
+
+<rect class="box" x="514" y="352" width="126" height="150" rx="6" stroke-width="0.5"/>
+<text class="th" x="526" y="370" dominant-baseline="central">HLK-PM01</text>
+<text class="t" x="526" y="394" dominant-baseline="central">+Vo</text>
+<text class="t" x="526" y="416" dominant-baseline="central">−Vo</text>
+<text class="t" x="526" y="438" dominant-baseline="central">AC</text>
+<text class="t" x="526" y="460" dominant-baseline="central">AC</text>
+<text class="ts" x="526" y="484" dominant-baseline="central">USB 대신 쓸 때</text>
+<line class="leader" x1="558" y1="394" x2="582" y2="394"/><line class="leader" x1="558" y1="416" x2="582" y2="416"/><line class="leader" x1="552" y1="460" x2="582" y2="460"/>
+<g class="c-gray"><rect x="584" y="385" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="606" y="394" text-anchor="middle" dominant-baseline="central">5V</text></g>
+<g class="c-gray"><rect x="584" y="407" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="606" y="416" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<g class="c-coral"><rect x="558" y="429" width="70" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="593" y="438" text-anchor="middle" dominant-baseline="central">L 퓨즈 뒤</text></g>
+<g class="c-coral"><rect x="584" y="451" width="44" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="606" y="460" text-anchor="middle" dominant-baseline="central">N</text></g>
+
+<rect class="box" x="40" y="518" width="141" height="116" rx="6" stroke-width="0.5"/>
+<rect class="box" x="193" y="518" width="141" height="116" rx="6" stroke-width="0.5"/>
+<rect class="box" x="346" y="518" width="141" height="116" rx="6" stroke-width="0.5"/>
+<rect class="box" x="499" y="518" width="141" height="116" rx="6" stroke-width="0.5"/>
+<text class="th" x="52" y="536" dominant-baseline="central">SET 버튼</text>
+<text class="th" x="205" y="536" dominant-baseline="central">UP 버튼</text>
+<text class="th" x="358" y="536" dominant-baseline="central">DOWN 버튼</text>
+<text class="th" x="511" y="536" dominant-baseline="central">RUN 버튼</text>
+<rect class="box" x="60" y="562" width="34" height="34" rx="3" stroke-width="0.5"/>
+<rect class="box" x="213" y="562" width="34" height="34" rx="3" stroke-width="0.5"/>
+<rect class="box" x="366" y="562" width="34" height="34" rx="3" stroke-width="0.5"/>
+<rect class="box" x="519" y="562" width="34" height="34" rx="3" stroke-width="0.5"/>
+<g fill="none" stroke="var(--s)" stroke-width="1">
+<circle cx="77" cy="579" r="10"/><circle cx="230" cy="579" r="10"/><circle cx="383" cy="579" r="10"/><circle cx="536" cy="579" r="10"/>
+</g>
+<g fill="none" stroke="var(--t)" stroke-width="1" stroke-dasharray="2 2">
+<rect x="62" y="552" width="6" height="10"/><rect x="86" y="596" width="6" height="10"/>
+<rect x="215" y="552" width="6" height="10"/><rect x="239" y="596" width="6" height="10"/>
+<rect x="368" y="552" width="6" height="10"/><rect x="392" y="596" width="6" height="10"/>
+<rect x="521" y="552" width="6" height="10"/><rect x="545" y="596" width="6" height="10"/>
+</g>
+<rect class="c-gray" x="86" y="552" width="6" height="10" stroke-width="0.5"/><rect class="c-gray" x="62" y="596" width="6" height="10" stroke-width="0.5"/>
+<rect class="c-gray" x="239" y="552" width="6" height="10" stroke-width="0.5"/><rect class="c-gray" x="215" y="596" width="6" height="10" stroke-width="0.5"/>
+<rect class="c-gray" x="392" y="552" width="6" height="10" stroke-width="0.5"/><rect class="c-gray" x="368" y="596" width="6" height="10" stroke-width="0.5"/>
+<rect class="c-gray" x="545" y="552" width="6" height="10" stroke-width="0.5"/><rect class="c-gray" x="521" y="596" width="6" height="10" stroke-width="0.5"/>
+<g fill="none" stroke="var(--s)" stroke-width="1">
+<path d="M92 557 L115 557"/><path d="M65 606 L65 616 L115 616"/>
+<path d="M245 557 L268 557"/><path d="M218 606 L218 616 L268 616"/>
+<path d="M398 557 L421 557"/><path d="M371 606 L371 616 L421 616"/>
+<path d="M551 557 L574 557"/><path d="M524 606 L524 616 L574 616"/>
+</g>
+<g class="c-gray"><rect x="115" y="548" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="142" y="557" text-anchor="middle" dominant-baseline="central">A0</text></g>
+<g class="c-gray"><rect x="115" y="607" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="142" y="616" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<g class="c-gray"><rect x="268" y="548" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="295" y="557" text-anchor="middle" dominant-baseline="central">A1</text></g>
+<g class="c-gray"><rect x="268" y="607" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="295" y="616" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<g class="c-gray"><rect x="421" y="548" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="448" y="557" text-anchor="middle" dominant-baseline="central">A2</text></g>
+<g class="c-gray"><rect x="421" y="607" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="448" y="616" text-anchor="middle" dominant-baseline="central">GND</text></g>
+<g class="c-gray"><rect x="574" y="548" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="601" y="557" text-anchor="middle" dominant-baseline="central">A3</text></g>
+<g class="c-gray"><rect x="574" y="607" width="54" height="18" rx="4" stroke-width="0.5"/><text class="ts" x="601" y="616" text-anchor="middle" dominant-baseline="central">GND</text></g>
+
+<circle class="c-amber" cx="46" cy="660" r="6" stroke-width="0.5"/>
+<text class="ts" x="58" y="660" dominant-baseline="central">열전대 신호</text>
+<circle class="c-coral" cx="150" cy="660" r="6" stroke-width="0.5"/>
+<text class="ts" x="162" y="660" dominant-baseline="central">SSR · 220V</text>
+<circle class="c-gray" cx="252" cy="660" r="6" stroke-width="0.5"/>
+<text class="ts" x="264" y="660" dominant-baseline="central">LCD · 버튼 · 전원</text>
+<circle cx="392" cy="660" r="6" fill="none" stroke="var(--t)" stroke-width="1"/>
+<text class="ts" x="404" y="660" dominant-baseline="central">비워두는 핀</text>
+<text class="ts" x="640" y="660" text-anchor="end" dominant-baseline="central">같은 이름끼리 연결</text>
+</svg>
+</body>
+</html>

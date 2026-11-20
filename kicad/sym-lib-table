@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "CoilHeater")(type "KiCad")(uri "${KIPRJMOD}/coil_heater.kicad_sym")(options "")(descr "Coil heater controller modules"))
+)

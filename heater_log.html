@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>밴드 히터 PID 기록</title>
+<style>
+/* 계측 프로그램의 프런트 패널 방식: 회색 패널, 테두리 묶음, 움푹 들어간 표시창, LED, 검은 차트. 밝기 설정과 무관하게 같은 모양. */
+:root { --panel: #d6d6d6; --hi: #f6f6f6; --lo: #6f6f6f; --ink: #000; --ink2: #3c3c3c; --field: #ffffff; --ind: #efefef; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--panel); color: var(--ink); font: 12px/1.35 Tahoma, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+#app { min-height: 100%; display: flex; flex-direction: column; padding: 6px 8px 0; }
+#panel { flex: 1; display: grid; grid-template-columns: 252px minmax(0, 1fr) 176px; gap: 8px; min-height: 0; }
+#left, #right { display: flex; flex-direction: column; min-width: 0; }
+#mid { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+fieldset { border: 2px groove var(--hi); margin: 0 0 6px; padding: 4px 8px 8px; min-width: 0; }
+legend { padding: 0 4px; font-weight: 700; }
+.row { display: flex; align-items: center; gap: 6px; margin-top: 5px; min-width: 0; }
+.row > label, .lab { flex: none; color: var(--ink); }
+.grow { flex: 1; min-width: 0; }
+.unit { flex: none; width: 18px; }
+/* 표시창(읽기 전용)과 입력창 */
+.ind, input, select, .list, .tbl { border: 2px solid; border-color: var(--lo) var(--hi) var(--hi) var(--lo); }
+.ind { background: var(--ind); padding: 1px 6px; height: 22px; line-height: 16px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ind.str { text-align: left; }
+.ind.big { height: 40px; line-height: 34px; font-size: 26px; font-weight: 700; }
+input, select { background: var(--field); color: var(--ink); font: inherit; padding: 1px 5px; height: 22px; min-width: 0; }
+input[type=number] { text-align: right; }
+button { font: inherit; color: var(--ink); background: #dedede; border: 2px solid; border-color: var(--hi) var(--lo) var(--lo) var(--hi); padding: 2px 10px; min-height: 24px; cursor: pointer; white-space: nowrap; }
+button:active:not(:disabled), button.on { border-color: var(--lo) var(--hi) var(--hi) var(--lo); background: #c4c4c4; }
+button:disabled { color: #8a8a8a; cursor: default; }
+button.stop { background: #c41e1e; color: #fff; font-weight: 700; letter-spacing: 1px; }
+button.stop:disabled { background: #b98a8a; color: #eee; }
+button.go { font-weight: 700; }
+/* LED */
+.leds { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-top: 6px; }
+.ledrow { display: flex; align-items: center; gap: 6px; }
+.led { width: 15px; height: 15px; border-radius: 50%; border: 1px solid #222; flex: none; background: radial-gradient(circle at 35% 30%, #6d8a6d, #123312 70%); }
+.led.on { background: radial-gradient(circle at 35% 30%, #eaffe0, #2dea2d 45%, #0b8f0b); }
+.led.red { background: radial-gradient(circle at 35% 30%, #8a6d6d, #3a1010 70%); }
+.led.red.on { background: radial-gradient(circle at 35% 30%, #ffe0e0, #ff2a2a 45%, #a00a0a); }
+.led.yel { background: radial-gradient(circle at 35% 30%, #8a866d, #3a3410 70%); }
+.led.yel.on { background: radial-gradient(circle at 35% 30%, #fffbe0, #ffd91a 45%, #a08200); }
+/* 출력 막대 */
+.slide { height: 16px; background: #fff; border: 2px solid; border-color: var(--lo) var(--hi) var(--hi) var(--lo); position: relative; }
+.slide i { position: absolute; left: 0; top: 0; bottom: 0; background: #1f5fbf; }
+/* 차트 */
+#chartbox { flex: 1; display: flex; flex-direction: column; min-height: 330px; }
+#cvwrap { flex: 1; position: relative; min-height: 250px; margin-top: 4px; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+#legend { display: flex; flex-wrap: wrap; gap: 0; background: var(--field); border: 2px solid; border-color: var(--lo) var(--hi) var(--hi) var(--lo); padding: 1px 2px; }
+#legend button { border: 0; background: none; min-height: 18px; padding: 0 5px; display: inline-flex; align-items: center; gap: 4px; }
+#legend button.off { color: #9a9a9a; }
+#legend .chip { width: 22px; height: 11px; background: #000; display: inline-flex; align-items: center; justify-content: center; }
+#legend .chip i { width: 16px; height: 2px; }
+#legend button.off .chip i { visibility: hidden; }
+/* 탭 */
+#tabs { display: flex; gap: 2px; padding-left: 4px; margin-top: 2px; }
+#tabs button { border-bottom: 0; min-height: 22px; padding: 1px 12px; background: #c6c6c6; border-color: var(--hi) var(--lo) var(--lo) var(--hi); position: relative; top: 2px; }
+#tabs button.on { background: var(--panel); font-weight: 700; border-color: var(--hi) var(--lo) var(--panel) var(--hi); z-index: 1; }
+#pages { border: 2px solid; border-color: var(--hi) var(--lo) var(--lo) var(--hi); height: 212px; padding: 8px; overflow: auto; margin-bottom: 6px; }
+#pages > div[hidden] { display: none; }
+.tbl { border-collapse: collapse; background: var(--field); width: 100%; }
+.tbl th, .tbl td { border: 1px solid #a8a8a8; padding: 2px 8px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tbl th { background: #cfcfcf; font-weight: 400; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl.kv td:first-child { background: #e4e4e4; width: 46%; }
+.tbl .chip { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 1px solid #000; vertical-align: -1px; }
+.list { background: var(--field); height: 100%; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.list li { display: flex; gap: 10px; padding: 1px 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.list li:nth-child(odd) { background: #f1f1f1; }
+.list time { min-width: 58px; } .list .kind { min-width: 30px; color: var(--ink2); }
+.form { display: grid; grid-template-columns: 70px minmax(0, 1fr) 70px minmax(0, 1fr); gap: 5px 8px; align-items: center; }
+.form .wide { grid-column: 2 / -1; }
+/* 온도계 */
+#right fieldset { flex: 1; display: flex; flex-direction: column; }
+#thwrap { flex: 1; position: relative; min-height: 220px; max-height: 470px; }
+#th { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tnum { display: grid; grid-template-columns: auto minmax(0, 1fr) 18px; gap: 4px 5px; align-items: center; margin-top: 4px; }
+.tnum .chip { width: 10px; height: 10px; border: 1px solid #000; display: inline-block; margin-right: 4px; vertical-align: -1px; }
+.tnum small { grid-column: 1 / -1; color: var(--ink2); margin-top: -3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 0; }
+/* 상태 줄 */
+#statusbar { display: flex; gap: 4px; padding: 3px 0 5px; }
+#statusbar div { border: 1px solid; border-color: var(--lo) var(--hi) var(--hi) var(--lo); padding: 1px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+#file { flex: 1; min-width: 0; }
+.bad { color: #b00000; } .warn { color: #7a5200; }
+dialog { border: 2px solid; border-color: var(--hi) var(--lo) var(--lo) var(--hi); background: var(--panel); color: var(--ink); padding: 14px 16px; max-width: 420px; font: inherit; }
+dialog::backdrop { background: rgba(0, 0, 0, 0.3); }
+dialog p { margin: 0 0 14px; }
+@media (max-width: 900px) { #panel { grid-template-columns: 1fr; } #thwrap { height: 240px; flex: none; } }
+</style>
+<div id="app">
+  <div id="panel">
+    <div id="left">
+      <fieldset>
+        <legend>연결</legend>
+        <div class="row"><select id="port" class="grow" aria-label="시리얼 포트"></select></div>
+        <div class="row"><div id="status" class="ind str grow">확인 중</div></div>
+        <div class="leds">
+          <div class="ledrow"><span id="led_conn" class="led"></span>연결</div>
+          <div class="ledrow"><span id="led_sim" class="led yel"></span>가상 보드</div>
+        </div>
+        <div class="row"><button id="bsim" class="grow" hidden>연습 모드</button><button id="bopen" class="grow">기록 폴더</button></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>현재값</legend>
+        <div class="row"><span class="lab" style="width:34px">PV</span><div id="n_pv" class="ind big grow">–</div><span class="unit">°C</span></div>
+        <div class="row"><span class="lab" style="width:34px">SP</span><div id="n_sp" class="ind grow">–</div><span class="unit">°C</span></div>
+        <div class="row"><span class="lab" style="width:34px">편차</span><div id="n_dev" class="ind grow">–</div><span class="unit">°C</span></div>
+        <div class="row"><span class="lab" style="width:34px">출력</span><div id="n_out" class="ind" style="width:62px">–</div><span class="unit">%</span><div class="slide grow"><i id="bar_out" style="width:0"></i></div></div>
+        <div class="row"><span class="lab" style="width:34px">기준</span><div id="n_src" class="ind str grow">–</div></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>제어</legend>
+        <div class="row"><label for="sp" style="width:34px">목표</label><input id="sp" type="number" min="0" max="300" step="1" inputmode="decimal" class="grow"><span class="unit">°C</span><button id="bsp">적용</button></div>
+        <div class="row"><button id="brun" class="go grow">운전</button><button id="bstop" class="stop grow">STOP</button></div>
+        <div class="row"><div id="n_mode" class="ind str grow">–</div><button id="bclr">알람 해제</button></div>
+        <div class="leds">
+          <div class="ledrow"><span id="led_run" class="led"></span>운전</div>
+          <div class="ledrow"><span id="led_relay" class="led"></span>릴레이</div>
+          <div class="ledrow"><span id="led_tune" class="led yel"></span>오토튜닝</div>
+          <div class="ledrow"><span id="led_ssr" class="led"></span>SSR</div>
+          <div class="ledrow"><span id="led_fault" class="led red"></span>알람</div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>명령</legend>
+        <div class="row"><input id="cmd" class="grow" placeholder="kp 3 / src 4 / tune" autocomplete="off" spellcheck="false" aria-label="명령"><button id="bcmd">보내기</button></div>
+        <div class="row"><div id="msg" class="ind str grow"></div></div>
+      </fieldset>
+    </div>
+
+    <div id="mid">
+      <fieldset id="chartbox">
+        <legend>온도 · 출력</legend>
+        <div class="row" style="margin-top:0">
+          <button data-win="300">5분</button><button data-win="1800">30분</button><button data-win="7200">2시간</button><button data-win="0">전체</button>
+          <span id="selnote"></span>
+          <span class="grow"></span>
+          <div id="legend"></div>
+        </div>
+        <div id="cvwrap"><canvas id="cv"></canvas></div>
+        <div class="row">
+          <label for="mark">표시</label>
+          <input id="mark" maxlength="120" autocomplete="off" style="width:200px">
+          <button id="bmark">남기기</button>
+          <span class="grow"></span>
+          <button id="bpng">그림 저장</button>
+        </div>
+      </fieldset>
+
+      <div id="tabs">
+        <button data-tab="p_stat" class="on">구간 통계</button><button data-tab="p_resp">응답 특성</button><button data-tab="p_exp">실험 정보</button><button data-tab="p_ev">사건 기록</button><button data-tab="p_set">설정</button>
+      </div>
+      <div id="pages">
+        <div id="p_stat"><div id="statcap" style="margin-bottom:5px"></div><table id="stats" class="tbl"></table></div>
+        <div id="p_resp" hidden><table id="resp" class="tbl kv"></table></div>
+        <div id="p_exp" hidden>
+          <div class="form">
+            <label for="m_name">실험 이름</label><input id="m_name" maxlength="60">
+            <label for="m_sample">시료</label><input id="m_sample" maxlength="100">
+            <label for="m_memo">메모</label><input id="m_memo" maxlength="500" class="wide">
+            <label for="m_l0">T1 위치</label><input id="m_l0" maxlength="24">
+            <label for="m_l1">T2 위치</label><input id="m_l1" maxlength="24">
+            <label for="m_l2">T3 위치</label><input id="m_l2" maxlength="24">
+            <label for="m_l3">T4 위치</label><input id="m_l3" maxlength="24">
+          </div>
+          <div class="row" style="margin-top:10px"><button id="bmeta">저장</button><button id="bnew">새 파일로 기록 시작</button></div>
+        </div>
+        <div id="p_ev" hidden style="height:100%"><ul id="ev" class="list"></ul></div>
+        <div id="p_set" hidden><table id="info" class="tbl kv"></table></div>
+      </div>
+    </div>
+
+    <div id="right">
+      <fieldset>
+        <legend>열전대</legend>
+        <div id="thwrap"><canvas id="th"></canvas></div>
+        <div class="tnum" id="tnum"></div>
+        <div class="row">* 제어 기준 &nbsp; ◀ 목표</div>
+      </fieldset>
+    </div>
+  </div>
+  <div id="statusbar">
+    <div id="file"></div><div id="clock">–</div><div id="fw">–</div>
+  </div>
+</div>
+<dialog id="dlg">
+  <p id="dlgtext"></p>
+  <div class="row"><span class="grow"></span><button id="dlgyes" style="min-width:70px">확인</button><button id="dlgno" style="min-width:70px">취소</button></div>
+</dialog>
+<script>
+const TOKEN = '__TOKEN__';
+const SER = [['PV', 'pv'], ['SP', 'sp'], ['T1', 't1'], ['T2', 't2'], ['T3', 't3'], ['T4', 't4'], ['OUT', 'out']];
+const IDX = { PV: 1, SP: 2, OUT: 3, T1: 4, T2: 5, T3: 6, T4: 7 }, MODE = 8, BAND = 1.0, HOLD = 60, PANEL = '#d6d6d6';
+const KIND = { board: '보드', cmd: '명령', mark: '표시', set: '설정', mode: '상태', conn: '연결' };
+// 화면용(검은 바탕)과 그림 저장용(흰 바탕) 색
+const PAL = {
+  screen: { bg: '#000000', grid: '#303030', text: '#000000', pv: '#ffffff', sp: '#ffe600', t1: '#ff4d4d', t2: '#3dff3d', t3: '#4db8ff', t4: '#ff66ff', out: '#ffa31a',
+            cur: '#ffe600', mark: '#d0d0d0', tipbg: '#101010', tipfg: '#ffffff', tipln: '#909090', sel: 'rgba(255,255,255,0.2)', m1: '#2dea2d', m2: '#ffd91a', m3: '#ff2a2a', page: PANEL },
+  print:  { bg: '#ffffff', grid: '#d4d4d4', text: '#000000', pv: '#000000', sp: '#6b6b6b', t1: '#d9480f', t2: '#2b8a3e', t3: '#1971c2', t4: '#c2255c', out: '#1971c2',
+            cur: '#000000', mark: '#555555', tipbg: '#ffffff', tipfg: '#000000', tipln: '#888888', sel: 'rgba(0,0,0,0.1)', m1: '#2b8a3e', m2: '#e0a800', m3: '#c92a2a', page: '#ffffff' },
+};
+let gen = 0, rows = [], events = [], state = {}, meta = { labels: ['', '', '', ''] }, elapsed = 0, ports = [], want = '', simOk = false, portsShown = '';
+let win = 1800, sel = null, lost = false, lastRowAt = 0, hover = null, drag = null, shownEv = -1, metaShown = '', G = null;
+const vis = { PV: true, SP: true, OUT: true, T1: true, T2: true, T3: true, T4: true };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fx = (v, d) => v == null || !isFinite(v) ? '–' : v.toFixed(d);
+const sgn = (v, d) => v == null || !isFinite(v) ? '–' : (v >= 0 ? '+' : '') + v.toFixed(d);
+function clock(t, sec) {
+  t = Math.max(0, Math.round(t));
+  const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60, p = n => String(n).padStart(2, '0');
+  return h ? h + ':' + p(m) + (sec ? ':' + p(s) : '') : m + ':' + p(s);
+}
+const label = k => { const i = +k[1] - 1; return k[0] === 'T' && meta.labels[i] ? k + ' ' + meta.labels[i] : k === 'OUT' ? '출력' : k; };
+
+// ---------- 받아오기 ----------
+async function poll() {
+  let more = false;
+  try {
+    const r = await fetch(`/api/data?gen=${gen}&n=${rows.length}&ev=${events.length}`, { cache: 'no-store' });
+    const d = await r.json();
+    if (d.gen !== gen) { gen = d.gen; rows = []; events = []; shownEv = -1; sel = null; if (win < 0) win = 1800; }
+    if (d.rows.length) lastRowAt = Date.now();
+    for (const x of d.rows) rows.push(x);
+    for (const e of d.events) events.push(e);
+    state = d.state; meta = d.meta; elapsed = d.elapsed; ports = d.ports || []; want = d.want || ''; simOk = !!d.sim_ok; lost = false; more = rows.length < d.total;
+  } catch (e) { lost = true; }
+  render();
+  setTimeout(poll, more ? 0 : 500);
+}
+async function post(path, body) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': TOKEN }, body: JSON.stringify(body || {}) });
+    return await r.json();
+  } catch (e) { return { ok: false, msg: '기록 프로그램에 닿지 않음' }; }
+}
+function say(d, okText) { $('msg').textContent = d.ok ? (okText || d.msg) : (d.msg || d.error || '실패'); $('msg').className = 'ind str grow' + (d.ok ? '' : ' bad'); $('msg').title = $('msg').textContent; }
+async function send(cmd) { const d = await post('/api/cmd', { cmd }); say(d, '보냄: ' + d.msg); }
+
+// ---------- 계산 ----------
+function lower(t) { let a = 0, b = rows.length; while (a < b) { const m = (a + b) >> 1; if (rows[m][0] < t) a = m + 1; else b = m; } return a; }
+function range() {
+  if (sel) return sel;
+  const tEnd = rows.length ? rows[rows.length - 1][0] : 0;
+  return win > 0 && tEnd > win ? [tEnd - win, tEnd] : [0, Math.max(tEnd, 60)];
+}
+// 구간 [i0, i1) 의 평균, 표준편차(n-1), 최소, 최대, 직선 기울기(°C/분). 첫 값을 빼고 더해 자릿수 손실을 줄인다
+function stat(j, i0, i1) {
+  let n = 0, s = 0, s2 = 0, st = 0, stt = 0, sty = 0, mn = Infinity, mx = -Infinity, ref = null; const tr = i0 < rows.length ? rows[i0][0] : 0;
+  for (let i = i0; i < i1; i++) {
+    const v = rows[i][j]; if (v == null) continue;
+    if (ref == null) ref = v;
+    const dv = v - ref, dt = rows[i][0] - tr; n++; s += dv; s2 += dv * dv; st += dt; stt += dt * dt; sty += dt * dv;
+    if (v < mn) mn = v; if (v > mx) mx = v;
+  }
+  if (!n) return null;
+  const den = stt - st * st / n;
+  return { n, mean: ref + s / n, std: n > 1 ? Math.sqrt(Math.max(0, (s2 - s * s / n) / (n - 1))) : null, min: mn, max: mx, slope: den > 1e-9 ? (sty - st * s / n) / den * 60 : null };
+}
+// 가장 최근 운전(RUN) 구간에서, 마지막으로 목표가 바뀐 때를 스텝의 시작으로 본다
+function response() {
+  let e = rows.length - 1; while (e >= 0 && rows[e][MODE] !== 1) e--;
+  if (e < 0) return null;
+  let s = e; while (s > 0 && rows[s - 1][MODE] === 1) s--;
+  let k = s; for (let i = e; i > s; i--) if (rows[i][2] !== rows[i - 1][2]) { k = i; break; }
+  const sp = rows[k][2], y0 = rows[k][1], t0 = rows[k][0];
+  if (sp == null || y0 == null) return null;
+  const d = sp - y0, r = { t0, y0, sp, d, running: e === rows.length - 1, tEnd: rows[e][0] };
+  if (Math.abs(d) < 2 * BAND) return r;                           // 스텝이 너무 작으면 지표를 내지 않음
+  const dir = Math.sign(d); let t10 = null, t90 = null, tx = null, peak = null, inband = null;
+  for (let i = k; i <= e; i++) {
+    const v = rows[i][1]; if (v == null) continue; const p = (v - y0) / d, t = rows[i][0];
+    if (t10 == null && p >= 0.1) t10 = t;
+    if (t90 == null && p >= 0.9) t90 = t;
+    if (tx == null && p >= 1) tx = t;
+    if (tx != null) { const ov = dir * (v - sp); if (peak == null || ov > peak) peak = ov; }
+    if (Math.abs(v - sp) > BAND) inband = null; else if (inband == null) inband = i;
+  }
+  r.rise = t10 != null && t90 != null ? t90 - t10 : null; r.reach = tx != null ? tx - t0 : null;
+  r.over = peak != null ? Math.max(0, peak) : null;
+  if (inband != null && rows[e][0] - rows[inband][0] >= HOLD) {    // 밴드 안에 들어와 60초 넘게 머물러야 정착으로 봄
+    r.settle = rows[inband][0] - t0; r.ss = stat(1, inband, e + 1);
+  }
+  return r;
+}
+
+// ---------- 화면 ----------
+const led = (id, on) => $(id).classList.toggle('on', !!on);
+function render() {
+  const st = $('status'), last = rows[rows.length - 1], on = state.connected && !lost, mode = state.mode || '';
+  let cls = '';
+  if (lost) { st.textContent = '기록 프로그램 꺼짐'; cls = ' bad'; }
+  else if (!state.connected) { st.textContent = state.note || '보드 연결 안 됨'; cls = ' warn'; }
+  else if (Date.now() - lastRowAt > 6000) { st.textContent = state.port + ' (값 없음)'; cls = ' warn'; }
+  else st.textContent = state.port;
+  st.className = 'ind str grow' + cls; st.title = st.textContent;
+  led('led_conn', on); led('led_sim', state.sim && !lost);
+  led('led_run', on && mode === 'RUN'); led('led_tune', on && mode === 'TUNE'); led('led_fault', on && mode === 'FAULT');
+  led('led_relay', on && state.relay === 'ON'); led('led_ssr', on && state.ssr === 'ON');
+
+  const ps = JSON.stringify([ports, want]), sel0 = $('port');
+  if (ps !== portsShown && document.activeElement !== sel0) {
+    portsShown = ps;
+    sel0.innerHTML = '<option value="">포트 자동</option>' + ports.map(p => `<option value="${esc(p.device)}">${esc(p.device.replace('/dev/', '') + (p.desc ? ' (' + p.desc + ')' : ''))}</option>`).join('');
+    sel0.value = want;
+  }
+  sel0.disabled = !!state.sim || lost; $('bopen').disabled = lost;
+  $('bsim').hidden = !simOk; $('bsim').disabled = lost; $('bsim').textContent = state.sim ? '연습 끝내기' : '연습 모드';
+
+  $('n_pv').textContent = fx(last && last[1], 2);
+  $('n_sp').textContent = fx(last ? last[2] : state.sp, 1);
+  $('n_dev').textContent = last && last[1] != null && last[2] != null ? sgn(last[1] - last[2], 2) : '–';
+  $('n_out').textContent = fx(last && last[3], 1); $('bar_out').style.width = (last && last[3] != null ? Math.max(0, Math.min(100, last[3])) : 0) + '%';
+  $('n_src').textContent = state.src || '–';
+  $('n_mode').textContent = mode ? mode + (state.fault ? ': ' + state.fault : '') : '–';
+  $('n_mode').className = 'ind str grow' + (mode === 'FAULT' ? ' bad' : '');
+
+  let tn = '';
+  for (let i = 1; i <= 4; i++) {
+    const v = last && last[3 + i], src = state.src === 'TC' + i;
+    tn += `<span><i class="chip" style="background:${PAL.print['t' + i]}"></i>T${i}${src ? ' *' : ''}</span><div class="ind">${fx(v, 2)}</div><span>°C</span>` +
+      (meta.labels[i - 1] ? `<small title="${esc(meta.labels[i - 1])}">${esc(meta.labels[i - 1])}</small>` : '');
+  }
+  $('tnum').innerHTML = tn;
+
+  // 구간 통계
+  const [t0, t1] = range(), i0 = lower(t0), i1 = lower(t1 + 1e-6);
+  $('statcap').textContent = `구간 ${clock(t0, true)} ~ ${clock(t1, true)}   ${((t1 - t0) / 60).toFixed(1)}분   n = ${Math.max(0, i1 - i0)}`;
+  let tb = '<tr><th>채널</th><th>현재</th><th>평균</th><th>표준편차</th><th>최소</th><th>최대</th><th>기울기 (°C/분)</th></tr>';
+  for (const k of ['PV', 'SP', 'T1', 'T2', 'T3', 'T4', 'OUT']) {
+    const s = stat(IDX[k], i0, i1), d = k === 'OUT' || k === 'SP' ? 1 : 2;
+    tb += `<tr><td><i class="chip" style="background:${PAL.print[k.toLowerCase()]}"></i>${esc(k === 'OUT' ? '출력 (%)' : label(k))}</td><td>${fx(last && last[IDX[k]], d)}</td>` +
+      (s ? `<td>${fx(s.mean, d + 1)}</td><td>${fx(s.std, d + 1)}</td><td>${fx(s.min, d)}</td><td>${fx(s.max, d)}</td><td>${k === 'OUT' || k === 'SP' ? '–' : fx(s.slope, 2)}</td>` : '<td>–</td>'.repeat(5)) + '</tr>';
+  }
+  $('stats').innerHTML = tb;
+
+  // 응답 특성
+  const r = response(), row = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`, sec = v => v == null ? null : clock(v, true) + '  (' + v.toFixed(0) + ' s)';
+  if (!r) $('resp').innerHTML = row('운전 구간', '없음');
+  else {
+    let x = row('스텝', `${r.y0.toFixed(1)} → ${r.sp.toFixed(1)} °C`) + row('구간', clock(r.t0, true) + ' ~ ' + (r.running ? '운전 중' : clock(r.tEnd, true)));
+    if (Math.abs(r.d) < 2 * BAND) x += row('지표', '스텝 2 °C 미만');
+    else x += row('상승 시간 (10 → 90 %)', sec(r.rise) || '–') + row('목표 도달', sec(r.reach) || '–') +
+      row('오버슈트', r.over == null ? '–' : r.over.toFixed(2) + ' °C  (' + (r.over / Math.abs(r.d) * 100).toFixed(1) + ' %)') +
+      row('정착 시간 (±' + BAND + ' °C, ' + HOLD + ' s)', sec(r.settle) || '–') +
+      row('정착 뒤 PV 평균 ± 표준편차', r.ss ? r.ss.mean.toFixed(3) + ' ± ' + fx(r.ss.std, 3) + ' °C  (n = ' + r.ss.n + ')' : '–') +
+      row('정착 뒤 평균 편차 (PV − SP)', r.ss ? sgn(r.ss.mean - r.sp, 3) + ' °C' : '–');
+    $('resp').innerHTML = x;
+  }
+
+  const g = v => v == null ? '–' : String(v);
+  $('info').innerHTML = [['Kp', g(state.kp)], ['Ki', g(state.ki)], ['Kd', g(state.kd)], ['출력 한계 (%)', g(state.outmax)], ['제어 기준', state.src || '–'],
+    ['전력량, 추정 (Wh)', g(state.energy)], ['운전 시간 (분)', g(state.runtime)], ['표본 간격 (s)', '1']].map(([k, v]) => row(k, esc(v))).join('');
+
+  if (shownEv !== events.length) {
+    shownEv = events.length;
+    const ul = $('ev'); ul.textContent = ''; let nm = events.filter(e => e[1] === 'mark').length;
+    for (const [t, kind, text] of events.slice(-400).reverse()) {
+      const li = document.createElement('li'), tm = document.createElement('time'), kd = document.createElement('span'), sp = document.createElement('span');
+      tm.textContent = clock(t, true); kd.className = 'kind'; kd.textContent = KIND[kind] || kind; sp.textContent = (kind === 'mark' ? '[' + (nm--) + '] ' : '') + text; li.append(tm, kd, sp); ul.append(li);
+    }
+  }
+  $('file').textContent = state.csv || ''; $('file').title = state.csv || '';
+  $('clock').textContent = lost ? '–' : clock(elapsed, true) + '   ' + rows.length + '점';
+  $('fw').textContent = state.version ? '펌웨어 ' + state.version : '–';
+  for (const id of ['bsp', 'brun', 'bstop', 'bclr', 'bcmd']) $(id).disabled = !on;
+  for (const id of ['bmark', 'bmeta', 'bnew', 'bpng']) $(id).disabled = lost;
+  if (document.activeElement !== $('sp') && state.sp != null && $('sp').dataset.shown !== String(state.sp)) { $('sp').value = state.sp; $('sp').dataset.shown = String(state.sp); }
+  const mj = JSON.stringify(meta);
+  if (mj !== metaShown && !(document.activeElement && document.activeElement.id.startsWith('m_'))) {
+    metaShown = mj; $('m_name').value = meta.name || ''; $('m_sample').value = meta.sample || ''; $('m_memo').value = meta.memo || '';
+    for (let i = 0; i < 4; i++) $('m_l' + i).value = meta.labels[i] || '';
+  }
+  for (const b of document.querySelectorAll('[data-win]')) b.classList.toggle('on', !sel && +b.dataset.win === win);
+  $('selnote').textContent = sel ? '선택 구간' : '';
+  $('legend').innerHTML = SER.map(([k, c]) => `<button class="${vis[k] ? '' : 'off'}" data-k="${k}"><span class="chip"><i style="background:${PAL.screen[c]}"></i></span>${esc(label(k))}</button>`).join('');
+  draw(); thermo();
+}
+
+// ---------- 차트 ----------
+function nice(lo, hi, n) {
+  const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+  const step = (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * mag, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-6; v += step) out.push(Math.abs(v) < step * 1e-6 ? 0 : v);
+  return out;
+}
+function setup(cv) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.font = '11px Tahoma, "Apple SD Gothic Neo", sans-serif';
+  return [c, W, H];
+}
+function draw(forFile) {
+  const [c, W, H] = setup($('cv')), P = forFile ? PAL.print : PAL.screen;
+  c.fillStyle = P.page; c.fillRect(0, 0, W, H);
+  const L = 46, R = 10, T = forFile ? 28 : 6, B = 34, GAP = 20, hOut = Math.round((H - T - B - GAP) * 0.22), hT = H - T - B - GAP - hOut, yOut = T + hT + GAP, PW = W - L - R;
+  const [t0, t1] = range(), i0 = lower(t0), i1 = lower(t1 + 1e-6), step = Math.max(1, Math.ceil((i1 - i0) / 1500));
+  const X = t => L + (t - t0) / (t1 - t0) * PW;
+  G = { L, R, PW, W, t0, t1 };
+
+  let lo = Infinity, hi = -Infinity;
+  for (let i = i0; i < i1; i++) for (const k of ['PV', 'SP', 'T1', 'T2', 'T3', 'T4']) {
+    const v = rows[i][IDX[k]]; if (vis[k] && v != null) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  }
+  if (!isFinite(lo)) { lo = 0; hi = 100; }
+  if (hi - lo < 4) { const m = (hi + lo) / 2; lo = m - 2; hi = m + 2; }
+  const pad = (hi - lo) * 0.07; lo -= pad; hi += pad;
+  const Y = v => T + (hi - v) / (hi - lo) * hT, YO = v => yOut + (100 - v) / 100 * hOut;
+
+  c.fillStyle = P.bg; c.fillRect(L, T, PW, hT); c.fillRect(L, yOut, PW, hOut);
+  // 눈금
+  c.lineWidth = 1; c.textBaseline = 'middle'; c.textAlign = 'right';
+  for (const v of nice(lo, hi, 6)) { const y = Math.round(Y(v)) + 0.5; c.strokeStyle = P.grid; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke(); c.fillStyle = P.text; c.fillText(String(+v.toFixed(3)), L - 5, y); }
+  for (const v of [0, 50, 100]) { const y = Math.round(YO(v)) + 0.5; c.strokeStyle = P.grid; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke(); c.fillStyle = P.text; c.fillText(String(v), L - 5, y); }
+  const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 28800, 86400];
+  const ts = steps.find(s => (t1 - t0) / s <= Math.max(3, Math.floor(PW / 90))) || 86400;
+  const p2 = n => String(n).padStart(2, '0'), long = t1 >= 3600;    // 한 시간이 넘으면 눈금을 전부 시:분으로 통일
+  const axis = t => { t = Math.round(t); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), q = t % 60; return long ? h + ':' + p2(m) + (ts < 60 ? ':' + p2(q) : '') : Math.floor(t / 60) + ':' + p2(q); };
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  for (let t = Math.ceil(t0 / ts) * ts; t <= t1 + 1e-6; t += ts) {
+    const x = Math.round(X(t)) + 0.5; c.strokeStyle = P.grid; c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + hT); c.moveTo(x, yOut); c.lineTo(x, yOut + hOut); c.stroke();
+    c.fillStyle = P.text; c.fillText(axis(t), x, yOut + hOut + 4);
+  }
+  c.fillStyle = P.text; c.fillText('시간 (' + (long ? '시:분' + (ts < 60 ? ':초' : '') : '분:초') + ')', L + PW / 2, H - 14);
+  c.save(); c.translate(10, T + hT / 2); c.rotate(-Math.PI / 2); c.textBaseline = 'middle'; c.fillText('온도 (°C)', 0, 0); c.restore();
+  c.save(); c.translate(10, yOut + hOut / 2); c.rotate(-Math.PI / 2); c.textBaseline = 'middle'; c.fillText('출력 (%)', 0, 0); c.restore();
+
+  // 상태 띠: 운전, 오토튜닝, 알람
+  const mcol = { 1: P.m1, 2: P.m2, 3: P.m3 };
+  for (let i = i0, a = i0; i <= i1; i++) {
+    if (i === i1 || rows[i][MODE] !== rows[a][MODE]) {
+      const m = a < i1 ? rows[a][MODE] : null;
+      if (mcol[m]) { const xa = Math.max(L, X(rows[a][0])), xb = Math.min(W - R, X(rows[Math.min(i, i1 - 1)][0])); c.fillStyle = mcol[m]; c.fillRect(xa, T + hT - 3, Math.max(1, xb - xa), 3); }
+      a = i;
+    }
+  }
+
+  function line(k, yf, color, width, dash, y0, h) {
+    if (!vis[k]) return;
+    c.save(); c.beginPath(); c.rect(L, y0, PW, h); c.clip();
+    c.strokeStyle = color; c.lineWidth = width; c.lineJoin = 'round'; c.setLineDash(dash || []); c.beginPath();
+    let pen = false; const j = IDX[k];
+    for (let i = i0; i < i1; i += step) {
+      if (i + step >= i1) i = i1 - 1;                             // 마지막 점은 항상 그림
+      const v = rows[i][j];
+      if (v == null) { pen = false; continue; }
+      const x = X(rows[i][0]), y = yf(v);
+      if (pen) c.lineTo(x, y); else { c.moveTo(x, y); pen = true; }
+    }
+    c.stroke(); c.restore();
+  }
+  line('SP', Y, P.sp, 1.4, [6, 4], T, hT);
+  line('PV', Y, P.pv, 2.2, null, T, hT);
+  for (const k of ['T1', 'T2', 'T3', 'T4']) line(k, Y, P[k.toLowerCase()], 1.2, null, T, hT);
+  line('OUT', YO, P.out, 1.4, null, yOut, hOut);
+  c.setLineDash([]); c.lineWidth = 1; c.strokeStyle = '#000'; c.strokeRect(L - 0.5, T - 0.5, PW + 1, hT + 1); c.strokeRect(L - 0.5, yOut - 0.5, PW + 1, hOut + 1);
+
+  // 표시(마커)
+  let nm = 0; c.textAlign = 'center'; c.textBaseline = 'top';
+  for (const [t, kind] of events) {
+    if (kind !== 'mark') continue; nm++;
+    if (t < t0 || t > t1) continue;
+    const x = Math.round(X(t)) + 0.5; c.strokeStyle = P.mark; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x, T); c.lineTo(x, yOut + hOut); c.stroke(); c.setLineDash([]);
+    const w = c.measureText(String(nm)).width + 8; c.fillStyle = P.tipbg; c.strokeStyle = P.mark; c.beginPath(); c.rect(x - w / 2, T + 3.5, w, 15); c.fill(); c.stroke(); c.fillStyle = P.tipfg; c.fillText(String(nm), x, T + 6);
+  }
+
+  if (forFile) {                                                  // 그림으로 저장할 때만 범례와 실험 이름을 차트 위에 넣음
+    c.textAlign = 'left'; c.textBaseline = 'middle'; let x = L;
+    for (const [k, col] of SER) {
+      if (!vis[k]) continue; const s = label(k);
+      c.strokeStyle = P[col]; c.lineWidth = 2; c.setLineDash(k === 'SP' ? [5, 3] : []); c.beginPath(); c.moveTo(x, 14); c.lineTo(x + 18, 14); c.stroke(); c.setLineDash([]);
+      c.fillStyle = P.text; c.fillText(s, x + 23, 14); x += c.measureText(s).width + 38;
+    }
+    c.textAlign = 'right'; c.fillText([meta.name, meta.sample].filter(Boolean).join(' / '), W - R, 14);
+    return;
+  }
+  if (drag) { const a = Math.max(L, Math.min(drag.x0, drag.x1)), b = Math.min(W - R, Math.max(drag.x0, drag.x1)); c.fillStyle = P.sel; c.fillRect(a, T, b - a, hT); c.fillRect(a, yOut, b - a, hOut); }
+  else if (hover != null && i1 > i0 && hover >= L && hover <= W - R) {      // 커서 자리의 값
+    const t = t0 + (hover - L) / PW * (t1 - t0); let i = Math.min(i1 - 1, Math.max(i0, lower(t)));
+    if (i > i0 && Math.abs(rows[i - 1][0] - t) < Math.abs(rows[i][0] - t)) i--;
+    const r = rows[i], x = Math.round(X(r[0])) + 0.5;
+    c.strokeStyle = P.cur; c.lineWidth = 1; c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + hT); c.moveTo(x, yOut); c.lineTo(x, yOut + hOut); c.stroke();
+    const items = SER.filter(([k]) => vis[k] && r[IDX[k]] != null).map(([k, col]) => [col, label(k) + '  ' + r[IDX[k]].toFixed(k === 'OUT' || k === 'SP' ? 1 : 2)]);
+    let bw = 96; for (const [, s] of items) bw = Math.max(bw, c.measureText(s).width + 34);
+    const bh = 22 + items.length * 15; let bx = x + 10; if (bx + bw > W - R) bx = x - 10 - bw;
+    c.fillStyle = P.tipbg; c.strokeStyle = P.tipln; c.beginPath(); c.rect(bx + 0.5, T + 8.5, bw, bh); c.fill(); c.stroke();
+    c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = P.cur; c.fillText(clock(r[0], true) + '  ' + ({ 0: 'STOP', 1: 'RUN', 2: 'TUNE', 3: 'FAULT' }[r[MODE]] || ''), bx + 8, T + 19);
+    items.forEach(([col, s], n) => { const y = T + 36 + n * 15; c.fillStyle = P[col]; c.fillRect(bx + 8, y - 1, 12, 2); c.fillStyle = P.tipfg; c.fillText(s, bx + 26, y); });
+  }
+}
+// 온도계 네 개: 같은 눈금, 채널 색 액주, 목표 온도에 삼각 표시
+function thermo() {
+  const [c, W, H] = setup($('th')), last = rows[rows.length - 1], v = [0, 1, 2, 3].map(i => last ? last[4 + i] : null), sp = last ? last[2] : state.sp;
+  c.fillStyle = PANEL; c.fillRect(0, 0, W, H);
+  const have = v.filter(x => x != null), mx = Math.max(100, sp || 0, ...have), mn = Math.min(0, ...have);
+  const hi = Math.ceil(mx * 1.08 / 50) * 50, lo = Math.floor(mn / 50) * 50, top = 22, bot = H - 30, x0 = 34, col = (W - x0 - 4) / 4, Y = t => bot - (t - lo) / (hi - lo) * (bot - top);
+  c.textAlign = 'right'; c.textBaseline = 'middle'; c.fillStyle = '#000'; c.strokeStyle = '#000'; c.lineWidth = 1;
+  const big = nice(lo, hi, 5), stepS = (big[1] - big[0]) / 5;
+  for (let t = lo; t <= hi + 1e-6; t += stepS) { const y = Math.round(Y(t)) + 0.5; c.beginPath(); c.moveTo(x0 - 4, y); c.lineTo(x0 - 1, y); c.stroke(); }
+  for (const t of big) { const y = Math.round(Y(t)) + 0.5; c.beginPath(); c.moveTo(x0 - 7, y); c.lineTo(x0 - 1, y); c.stroke(); c.fillText(String(t), x0 - 9, y); }
+  c.textAlign = 'center';
+  for (let i = 0; i < 4; i++) {
+    const cx = Math.round(x0 + col * (i + 0.5)), color = PAL.print['t' + (i + 1)], w = 9;
+    c.textBaseline = 'top'; c.fillStyle = '#000'; c.fillText('T' + (i + 1), cx, 4);
+    c.fillStyle = '#fff'; c.fillRect(cx - w / 2, top, w, bot - top + 8);
+    if (v[i] != null) { const y = Math.max(top, Math.min(bot, Y(v[i]))); c.fillStyle = color; c.fillRect(cx - w / 2, y, w, bot - y + 8); }
+    c.strokeStyle = '#3a3a3a'; c.strokeRect(cx - w / 2 - 0.5, top - 0.5, w + 1, bot - top + 9);
+    c.beginPath(); c.arc(cx, bot + 14, 9, 0, Math.PI * 2); c.fillStyle = v[i] != null ? color : '#9a9a9a'; c.fill(); c.stroke();
+    if (sp != null && sp >= lo && sp <= hi) { const y = Y(sp); c.fillStyle = '#000'; c.beginPath(); c.moveTo(cx + w / 2 + 2, y); c.lineTo(cx + w / 2 + 8, y - 4); c.lineTo(cx + w / 2 + 8, y + 4); c.closePath(); c.fill(); }
+  }
+}
+
+// ---------- 조작 ----------
+function ask(text) {                                              // 확인 창 (브라우저와 전용 창에서 똑같이 뜨게 화면 안에 둠)
+  return new Promise(res => {
+    const d = $('dlg'); $('dlgtext').textContent = text;
+    const done = v => { $('dlgyes').onclick = $('dlgno').onclick = d.oncancel = null; d.close(); res(v); };
+    $('dlgyes').onclick = () => done(true); $('dlgno').onclick = () => done(false);
+    d.oncancel = e => { e.preventDefault(); done(false); };
+    d.showModal(); $('dlgno').focus();
+  });
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.win != null) { win = +b.dataset.win; sel = null; render(); }
+  else if (b.dataset.k) { vis[b.dataset.k] = !vis[b.dataset.k]; render(); }
+  else if (b.dataset.tab) {
+    for (const t of document.querySelectorAll('[data-tab]')) { t.classList.toggle('on', t === b); $(t.dataset.tab).hidden = t !== b; }
+  }
+});
+function applySp() {
+  const v = parseFloat($('sp').value);
+  if (!(v >= 0 && v <= 300)) return say({ ok: false, msg: '목표 온도는 0~300 °C' });
+  $('sp').dataset.shown = ''; send('sp ' + v);
+}
+$('bsp').onclick = applySp;
+$('sp').onkeydown = e => { if (e.key === 'Enter') applySp(); };
+$('brun').onclick = async () => { if (await ask('목표 ' + fx(state.sp, 1) + ' °C로 히터를 켭니다.')) send('run'); };
+$('bstop').onclick = () => send('stop');
+$('bclr').onclick = () => send('clear');
+function sendCmd() { const v = $('cmd').value.trim(); if (v) { send(v); $('cmd').value = ''; } }
+$('bcmd').onclick = sendCmd;
+$('cmd').onkeydown = e => { if (e.key === 'Enter') sendCmd(); };
+async function addMark() { say(await post('/api/mark', { text: $('mark').value })); $('mark').value = ''; }
+$('bmark').onclick = addMark;
+$('mark').onkeydown = e => { if (e.key === 'Enter') addMark(); };
+const formMeta = () => ({ name: $('m_name').value, sample: $('m_sample').value, memo: $('m_memo').value, labels: [0, 1, 2, 3].map(i => $('m_l' + i).value) });
+$('bmeta').onclick = async () => { metaShown = ''; say(await post('/api/meta', formMeta())); };
+$('bnew').onclick = async () => {
+  if (!(await ask('지금 파일을 닫고 새 파일에 기록을 시작합니다. 차트와 통계도 처음부터 다시 시작합니다.'))) return;
+  metaShown = ''; say(await post('/api/new', formMeta()));
+};
+$('bpng').onclick = async () => {                               // 흰 바탕 그림으로, 기록 파일 옆에 저장
+  draw(true); const data = $('cv').toDataURL('image/png'), [t0, t1] = range(); draw();
+  say(await post('/api/png', { data, tag: Math.round(t0) + '-' + Math.round(t1) + 's' }));
+};
+$('port').onchange = async () => { portsShown = ''; say(await post('/api/port', { port: $('port').value })); };
+$('bopen').onclick = async () => say(await post('/api/open'));
+$('bsim').onclick = async () => {
+  const on = !state.sim;
+  if (!(await ask(on ? '가상 보드로 연습합니다. 실제 히터는 켜지지 않고, 기록은 연습 폴더에 따로 남습니다.' : '연습을 끝내고 실물 보드로 돌아갑니다.'))) return;
+  say(await post('/api/sim', { on }));
+};
+const cv = $('cv');
+cv.addEventListener('pointerdown', e => { if (e.button === 0) { drag = { x0: e.offsetX, x1: e.offsetX }; cv.setPointerCapture(e.pointerId); } });
+cv.addEventListener('pointermove', e => { hover = e.offsetX; if (drag) drag.x1 = e.offsetX; draw(); });
+cv.addEventListener('pointerup', () => {
+  if (drag && G) {
+    const a = Math.min(drag.x0, drag.x1), b = Math.max(drag.x0, drag.x1), f = x => G.t0 + (Math.min(G.W - G.R, Math.max(G.L, x)) - G.L) / G.PW * (G.t1 - G.t0);
+    if (b - a > 6 && f(b) - f(a) >= 2) { sel = [f(a), f(b)]; win = -1; }
+  }
+  drag = null; render();
+});
+cv.addEventListener('pointerleave', () => { hover = null; if (!drag) draw(); });
+const ro = new ResizeObserver(() => { draw(); thermo(); }); ro.observe($('cvwrap')); ro.observe($('thwrap'));
+poll();
+</script>
+</html>
