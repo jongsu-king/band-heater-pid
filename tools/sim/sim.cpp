@@ -111,6 +111,10 @@ int main(int argc,char** argv){
   CHECK(map,"4채널이 CS 핀(D10,D9,D8,D7) 순서대로 각자 온도를 읽음");
   bool cfgok=true; for(auto&c:chip) cfgok&=(c.reg[0]==0x90&&c.reg[1]==7); CHECK(cfgok,"칩 4개 모두 CR0=0x90(연속 변환, 단선 감지, 60Hz), CR1=7(T형)로 설정됨");
   CHECK(mode==M_STOP&&!pinv[5]&&!pinv[6],"정지 상태: 릴레이 OFF, SSR OFF");
+  printf("1-1) 저장하지 않는 목표 변경 (spt)\n");
+  { long n0=EEPROM.puts; cmd("spt 120"); CHECK(fabs(cfg.sp-120)<1e-6&&EEPROM.puts==n0,"spt 120: 목표는 120으로 바뀌고 EEPROM에는 쓰지 않음");
+    cmd("spt 999"); CHECK(fabs(cfg.sp-SP_MAX)<1e-6&&EEPROM.puts==n0,"spt 999: 상한(SP_MAX)으로 잘림, 여전히 쓰지 않음");
+    cmd("sp 130"); CHECK(fabs(cfg.sp-130)<1e-6&&EEPROM.puts==n0+1,"sp 130: 저장함 (쓰기 1회)"); }
   printf("2) 운전 (목표 100도, 30분)\n"); cmd("sp 100"); cmd("run"); run(1000);
   CHECK(mode==M_RUN&&pinv[5],"run 명령 후 릴레이 ON");
   double mx=0; for(int k=0;k<1800;k++){ run(1000); if(pv>mx)mx=pv; if(k%300==299) show("run"); }

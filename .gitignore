@@ -1,6 +1,6 @@
 # 빌드 산출물 (다시 만들 수 있음)
 dist/
-build/v13/
+build/v*/
 tools/sim/sim_bin
 tools/tc_diag/build/
 __pycache__/

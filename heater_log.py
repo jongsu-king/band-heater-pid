@@ -27,7 +27,7 @@ import argparse, atexit, base64, datetime, json, os, re, secrets, signal, subpro
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-VERSION = '1.1'
+VERSION = '1.2'
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = getattr(sys, '_MEIPASS', HERE)    # 응용프로그램으로 묶였을 때는 그 안의 자원 폴더
 USB_VID = {0x0403, 0x1A86, 0x10C4, 0x2341, 0x2A03, 0x067B}        # FTDI, CH340, CP210x, Arduino, Prolific
@@ -36,7 +36,7 @@ HEAD = ['PV_degC', 'SP_degC', 'OUT_pct', 'T1_degC', 'T2_degC', 'T3_degC', 'T4_de
 FMT = ['%.2f', '%.1f', '%.1f', '%.2f', '%.2f', '%.2f', '%.2f']
 MODE_CODE = {'STOP': 0, 'RUN': 1, 'TUNE': 2, 'FAULT': 3}
 MAX_ROWS = 400000                       # 화면용으로 메모리에 두는 표본 수 (1초 간격으로 약 4.6일). 파일에는 제한 없이 쓴다
-CMD_OK = re.compile(r'^(?:(?:sp|kp|ki|kd|out) \d+(?:\.\d+)?|src (?:[1-4]|avg|max)|run|stop|tune|clear|show|help|log [01])$')
+CMD_OK = re.compile(r'^(?:(?:sp|spt|kp|ki|kd|out) \d+(?:\.\d+)?|src (?:[1-4]|avg|max)|run|stop|tune|clear|show|help|log [01])$')
 RE_SET = re.compile(r'^# SP=(\S+) Kp=(\S+) Ki=(\S+) Kd=(\S+) OUTMAX=(\S+) SRC=(\S+) MODE=(\S+)(?: (.*))?$')
 RE_AC = re.compile(r'^# AC: RELAY=(ON|OFF) SSR=(ON|OFF) E=([\d.]+)Wh RUNTIME=(\d+)min')
 RE_VER = re.compile(r'^# Band Heater PID (\S+)')
@@ -58,6 +58,11 @@ def num(s):
     except (TypeError, ValueError):
         return None
     return v if v == v and abs(v) != float('inf') else None      # nan, inf 는 빈 값
+
+
+def fw_tuple(v):
+    m = re.match(r'v?(\d+)\.(\d+)', v or '')
+    return (int(m[1]), int(m[2])) if m else (0, 0)
 
 
 def clean(s, n=200):
@@ -129,11 +134,272 @@ class Hub:
                           relay='', ssr='', energy=None, runtime=None, csv='', sim=False)
         self.csv = self.evf = self.raw = None
         self.last_port = ''
+        # PC 쪽 설정: 온도 프로그램(승온·유지 단계)과 PC 경보. 기록 폴더의 설정.json 에 남는다
+        self.cfg = dict(steps=[dict(target=80.0, rate=5.0, hold=10.0)], tol=1.0, end_stop=True,
+                        hi=[None, None, None, None], spread=None, auto_stop=True)
+        self.prog = dict(on=False, step=0, n=0, phase='', sp=None, target=None, left=None)
+        self.alarm = dict(active=[], latched='', n=0)
+        self._pstop = threading.Event()
+        try:
+            with open(os.path.join(self.base_dir, '설정.json'), encoding='utf-8') as f:
+                self._merge_cfg(json.load(f))
+        except (OSError, ValueError):
+            pass
+
+    # ---------- PC 쪽 설정 ----------
+    def _merge_cfg(self, d):
+        c = self.cfg
+
+        def f(x, lo, hi):
+            x = num(x)
+            return None if x is None else min(hi, max(lo, x))
+        if not isinstance(d, dict):
+            return
+        if isinstance(d.get('steps'), list):
+            steps = []
+            for st in d['steps'][:20]:
+                if isinstance(st, dict) and f(st.get('target'), 0, 300) is not None:
+                    steps.append(dict(target=f(st.get('target'), 0, 300), rate=f(st.get('rate'), 0, 60) or 0.0,
+                                      hold=f(st.get('hold'), 0, 6000) or 0.0))
+            c['steps'] = steps
+        if 'tol' in d:
+            c['tol'] = f(d['tol'], 0.1, 20) or 1.0
+        if 'end_stop' in d:
+            c['end_stop'] = bool(d['end_stop'])
+        if isinstance(d.get('hi'), list):
+            c['hi'] = [f(x, -200, 400) for x in (d['hi'] + [None] * 4)[:4]]
+        if 'spread' in d:
+            c['spread'] = f(d['spread'], 0.1, 400)
+        if 'auto_stop' in d:
+            c['auto_stop'] = bool(d['auto_stop'])
+
+    def set_cfg(self, d):
+        with self.lock:
+            before = json.dumps([self.cfg['hi'], self.cfg['spread'], self.cfg['auto_stop']])
+            self._merge_cfg(d)
+            c = self.cfg
+            os.makedirs(self.base_dir, exist_ok=True)
+            tmp = os.path.join(self.base_dir, '설정.json.tmp')
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(c, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, os.path.join(self.base_dir, '설정.json'))
+            if self.csv and before != json.dumps([c['hi'], c['spread'], c['auto_stop']]):
+                self._event('set', 'PC 경보 설정: 상한 %s, 채널 차이 %s, 경보 때 정지 %s' % (
+                    '/'.join('-' if v is None else '%g' % v for v in c['hi']),
+                    '-' if c['spread'] is None else '%g' % c['spread'], '켬' if c['auto_stop'] else '끔'))
+
+    # ---------- PC 경보: 채널 상한, 채널 간 차이 ----------
+    def _alarm_conditions(self, row):
+        c, out = self.cfg, []
+        if not row:
+            return out
+        vals = row[4:8]
+        for i, v in enumerate(vals):
+            hi = c['hi'][i]
+            if hi is not None and v is not None and v > hi:
+                out.append('T%d %.1f °C > 상한 %g' % (i + 1, v, hi))
+        ok = [v for v in vals if v is not None]
+        if c['spread'] is not None and len(ok) >= 2 and max(ok) - min(ok) > c['spread']:
+            out.append('채널 간 차이 %.1f °C > %g' % (max(ok) - min(ok), c['spread']))
+        return out
+
+    def _check_alarm(self, row):
+        a = self.alarm
+        cond = self._alarm_conditions(row)
+        a['active'] = cond
+        a['n'] = a['n'] + 1 if cond else 0
+        if cond and a['n'] == 2 and not a['latched']:              # 두 번 연속일 때만 (한 번 튄 값은 넘김)
+            a['latched'] = cond[0]
+            self._event('alarm', 'PC 경보: ' + '; '.join(cond))
+            if self.cfg['auto_stop'] and self.state['mode'] in ('RUN', 'TUNE'):
+                self._pstop.set()
+                self.send('stop', who='경보')
+
+    def alarm_ack(self):
+        with self.lock:
+            if self.alarm['latched'] and self.csv:
+                self._event('alarm', 'PC 경보 확인')
+            self.alarm.update(latched='', n=0)
+
+    # ---------- 온도 프로그램: 단계마다 승온 속도로 목표를 올리고, 도달하면 유지 시간만큼 머문다 ----------
+    def _last_pv(self):
+        return self.rows[-1][1] if self.rows else None
+
+    def prog_start(self):
+        with self.lock:
+            s = self.state
+            if self.prog['on']:
+                return False, '이미 프로그램 운전 중'
+            if not s['connected']:
+                return False, '보드가 연결돼 있지 않습니다'
+            if s['mode'] == 'FAULT':
+                return False, '알람 상태입니다. 먼저 알람을 해제하세요'
+            if s['mode'] == 'TUNE':
+                return False, '오토튜닝 중입니다'
+            steps = [dict(x) for x in self.cfg['steps']]
+            if not steps:
+                return False, '단계가 없습니다'
+            if self._last_pv() is None:
+                return False, '현재 온도를 읽지 못했습니다'
+            self._pstop = threading.Event()
+            self.prog.update(on=True, step=0, n=len(steps), phase='start', sp=None, target=None, left=None)
+            args = (steps, self.link, self._pstop, self.cfg['tol'], self.cfg['end_stop'])
+        threading.Thread(target=self._prog_run, args=args, daemon=True).start()
+        return True, '프로그램 운전 시작'
+
+    def prog_stop(self):
+        if not self.prog['on']:
+            return False, '프로그램 운전 중이 아님'
+        self._pstop.set()
+        self.send('stop', who='프로그램')
+        return True, '프로그램 중지, 히터 정지'
+
+    def _prog_run(self, steps, link, stop, tol, end_stop):
+        volatile = fw_tuple(self.state['version']) >= (1, 4)       # v1.4부터 spt: EEPROM에 쓰지 않고 목표를 바꿈
+        cmd, q = ('spt', 0.1) if volatile else ('sp', 1.0)
+        t0 = time.monotonic()
+        clock = lambda: (time.monotonic() - t0) * self.scale
+        tick = max(0.05, 0.5 / self.scale)
+        sent, why = [None], ['']
+
+        def pv():
+            with self.lock:
+                return self._last_pv()
+
+        def setsp(v):
+            v = round(round(v / q) * q, 1)
+            if sent[0] != v:
+                self.send('%s %.1f' % (cmd, v), who='')
+                sent[0] = v
+
+        def ok(need_run=True):
+            s = self.state
+            if stop.is_set():
+                why[0] = why[0] or '중지'
+            elif self.link is not link or not s['connected']:
+                why[0] = '중단: 연결이 끊김'
+            elif s['mode'] == 'FAULT':
+                why[0] = '중단: 보드 알람 (%s)' % s['fault']
+            elif need_run and s['mode'] == 'STOP':
+                why[0] = '중단: 보드가 정지됨'
+            else:
+                return True
+            return False
+
+        def status(**k):
+            with self.lock:
+                self.prog.update(k)
+
+        def ev(text):
+            with self.lock:
+                if self.csv:
+                    self._event('prog', text)
+        try:
+            ev('프로그램 시작: %d단계, 목표 변경 명령 %s%s' % (len(steps), cmd, '' if volatile else ' (펌웨어 v1.4 미만: 1 °C 단위, 바꿀 때마다 보드에 저장됨)'))
+            cur = pv()
+            if cur is None:
+                why[0] = '중단: 현재 온도 없음'
+                return
+            if self.state['mode'] != 'RUN':
+                setsp(cur)
+                self.send('run', who='프로그램')
+                end = time.monotonic() + 6
+                while self.state['mode'] != 'RUN' and time.monotonic() < end and ok(False):
+                    stop.wait(0.05)
+                if self.state['mode'] != 'RUN':
+                    why[0] = why[0] or '중단: 운전을 시작하지 못함'
+                    return
+            for i, st in enumerate(steps, 1):
+                target, rate, hold = st['target'], st['rate'], st['hold']
+                ev('%d단계: %.1f → %.1f °C, %s, 유지 %g분' % (i, cur, target, ('%g °C/분' % rate) if rate > 0 else '바로', hold))
+                ts = clock()
+                if rate > 0 and abs(target - cur) > 1e-6:
+                    dur, sign = abs(target - cur) / rate * 60.0, (1 if target > cur else -1)
+                    while True:
+                        if not ok():
+                            return
+                        el = clock() - ts
+                        spv = target if el >= dur else cur + sign * rate * el / 60.0
+                        setsp(spv)
+                        status(step=i, phase='ramp', sp=round(spv, 1), target=target, left=round(max(0.0, dur - el)))
+                        if el >= dur:
+                            break
+                        stop.wait(tick)
+                cur = target
+                setsp(target)
+                status(step=i, phase='wait', sp=target, target=target, left=None)
+                while True:
+                    if not ok():
+                        return
+                    p = pv()
+                    if p is not None and abs(p - target) <= tol:
+                        break
+                    stop.wait(tick)
+                ev('%d단계 도달: PV %.2f °C' % (i, p))
+                th = clock()
+                while True:
+                    if not ok():
+                        return
+                    left = hold * 60.0 - (clock() - th)
+                    status(step=i, phase='hold', left=round(max(0.0, left)))
+                    if left <= 0:
+                        break
+                    stop.wait(tick)
+            if end_stop:
+                self.send('stop', who='프로그램')
+                why[0] = '끝: 히터 정지'
+            else:
+                why[0] = '끝: 마지막 목표 유지'
+        finally:
+            ev('프로그램 ' + (why[0] or '중단'))
+            status(on=False, phase='', left=None)
+
+    # ---------- 구간 내보내기, 통계 저장 ----------
+    def export_part(self, t0, t1):
+        t0, t1 = num(t0), num(t1)
+        if t0 is None or t1 is None or t1 <= t0:
+            return False, '구간이 잘못됨'
+        with self.lock:
+            if not self.csv:
+                return False, '기록 파일이 없음'
+            src, dst = self.base + '.csv', '%s_part_%d-%ds.csv' % (self.base, round(t0), round(t1))
+        n = 0
+        with open(src, encoding='utf-8') as f, open(dst, 'w', encoding='utf-8', newline='') as g:
+            g.write(f.readline())
+            for line in f:
+                try:
+                    t = float(line.split(',', 2)[1])
+                except (IndexError, ValueError):
+                    continue
+                if t0 <= t <= t1:
+                    g.write(line)
+                    n += 1
+        return True, '구간 저장: %s (%d줄)' % (os.path.basename(dst), n)
+
+    def save_stats(self, d):
+        rows, t0, t1 = d.get('rows'), num(d.get('t0')), num(d.get('t1'))
+        if not isinstance(rows, list) or t0 is None or t1 is None:
+            return False, '통계가 없음'
+        with self.lock:
+            if not self.csv:
+                return False, '기록 파일이 없음'
+            path = self.base + '_stats.tsv'
+            new = not os.path.exists(path)
+            with open(path, 'a', encoding='utf-8') as f:
+                if new:
+                    f.write('saved_at\tt0_s\tt1_s\tchannel\tn\tmean\tstd\tmin\tmax\tslope_per_min\n')
+                for r in rows[:10]:
+                    if isinstance(r, dict):
+                        vals = [num(r.get(k)) for k in ('n', 'mean', 'std', 'min', 'max', 'slope')]
+                        f.write('%s\t%.2f\t%.2f\t%s\t%s\n' % (stamp_ms(), t0, t1, clean(r.get('ch'), 30),
+                                '\t'.join('' if v is None else '%.6g' % v for v in vals)))
+        return True, '통계 저장: ' + os.path.basename(path)
 
     # ---------- 보드 연결을 고르고 바꾼다 ----------
     def start(self, sim=None, port='', new_file=True):
         """sim: 가상 보드 배속(없으면 실물 보드). port: 고른 포트('' 이면 자동). 실물 ↔ 연습을 바꾸면 새 파일로 넘어간다."""
         old, th = self.link, self.thread
+        self._pstop.set()
         if old:
             old.stop()
         if th:
@@ -268,14 +534,18 @@ class Hub:
                 self.nrows += 1
                 if self.nrows % 300 == 0:
                     self._write_meta()                             # 줄 수를 5분마다 메타데이터에 반영 (끝낼 때 한 번 더 씀)
+                row = [t] + vals + [MODE_CODE.get(s['mode'])]
                 if len(self.rows) < MAX_ROWS:
-                    self.rows.append([t] + vals + [MODE_CODE.get(s['mode'])])
+                    self.rows.append(row)
                 self.csv.write('%s,%.2f,%s,%s\n' % (stamp_ms(), t,
                                ','.join('' if v is None else f % v for f, v in zip(FMT, vals)), s['mode']))
+                self._check_alarm(row)
             elif kind == 'set':
                 first = s['sp'] is None
                 diff = ['%s %s → %s' % (k.upper(), s[k], d[k]) for k in ('sp', 'kp', 'ki', 'kd', 'outmax', 'src')
                         if s[k] != d[k]]
+                if self.prog['on']:                                # 프로그램이 목표를 계속 바꾸는 동안은 SP 변경을 줄줄이 적지 않는다 (CSV의 SP 열에 남음)
+                    diff = [x for x in diff if not x.startswith('SP ')]
                 old_mode = s['mode']
                 s.update(d)
                 if first:                                          # 연결 직후, 또는 보드가 리셋된 직후
@@ -327,9 +597,15 @@ class Hub:
         with self.lock:
             if gen != self.gen:
                 n = ne = 0
+            st = dict(self.state)
+            home = os.path.expanduser('~')
+            st['csv_show'] = ('~' + st['csv'][len(home):]) if st['csv'].startswith(home + os.sep) else st['csv']    # 화면에는 홈 폴더를 ~ 로 줄여 보임
             return dict(gen=self.gen, rows=self.rows[n:n + 20000], total=len(self.rows), events=self.events[ne:],
-                        state=dict(self.state), meta=dict(self.meta), elapsed=self._now(),
-                        ports=list(self.ports), want=self.want, sim_ok=sim_exe() is not None, folder=self.out_dir)
+                        state=st, meta=dict(self.meta), elapsed=self._now(),
+                        ports=list(self.ports), want=self.want, sim_ok=sim_exe() is not None, folder=self.out_dir,
+                        cfg=json.loads(json.dumps(self.cfg)), prog=dict(self.prog),
+                        alarm=dict(active=list(self.alarm['active']), latched=self.alarm['latched']),
+                        spcmd='spt' if fw_tuple(self.state['version']) >= (1, 4) else 'sp')
 
     def save_png(self, data, tag):
         """화면이 보낸 그래프 그림(PNG)을 기록 파일 옆에 저장한다."""
@@ -565,6 +841,21 @@ def make_handler(hub, token):
                 return self.reply(200, {'ok': True, 'msg': '새 파일: ' + os.path.basename(hub.state['csv'])})
             if self.path == '/api/png':
                 ok, msg = hub.save_png(body.get('data'), body.get('tag', ''))
+                return self.reply(200, {'ok': ok, 'msg': msg})
+            if self.path == '/api/cfg':
+                hub.set_cfg(body)
+                return self.reply(200, {'ok': True, 'msg': '저장했습니다'})
+            if self.path == '/api/prog':
+                ok, msg = hub.prog_start() if body.get('on') else hub.prog_stop()
+                return self.reply(200, {'ok': ok, 'msg': msg})
+            if self.path == '/api/ack':
+                hub.alarm_ack()
+                return self.reply(200, {'ok': True, 'msg': '경보를 확인했습니다'})
+            if self.path == '/api/export':
+                ok, msg = hub.export_part(body.get('t0'), body.get('t1'))
+                return self.reply(200, {'ok': ok, 'msg': msg})
+            if self.path == '/api/stats':
+                ok, msg = hub.save_stats(body)
                 return self.reply(200, {'ok': ok, 'msg': msg})
             if self.path == '/api/open':
                 ok, msg = hub.open_folder()

@@ -695,7 +695,7 @@ footer { font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--rule)
   </div>
   <pre class="code"><code id="src" class="language-cpp">/*
  * =====================================================================
- *  Band Heater PID Controller  v1.3
+ *  Band Heater PID Controller  v1.4
  * ---------------------------------------------------------------------
  *  보드      : Arduino Uno / Nano (ATmega328P)
  *  온도센서  : 열전대 1~4개 + MAX31856(T형 등 모든 타입) / MAX6675(K형) / MAX31855 모듈
@@ -708,6 +708,7 @@ footer { font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--rule)
  *              부팅할 때 응답하는 LCD만 쓴다. LCD 1 하나만 달면 v1.2와 같은 화면으로 동작
  *  버튼      : SET / UP / DOWN / RUN  (핀 ↔ GND, 내부 풀업 사용)
  *  시리얼    : 115200bps, 1초마다 로그 (시리얼 플로터 호환) + 명령 (&quot;help&quot;)
+ *              &quot;spt 120&quot; 은 목표온도를 EEPROM에 저장하지 않고 바꾼다 (PC가 목표를 자주 바꾸는 승온 프로그램용)
  * ---------------------------------------------------------------------
  *  [조작법]
  *   RUN 1초 길게 누름 : 운전 시작
@@ -1581,7 +1582,7 @@ void printSettings() {
 }
 
 void printHelp() {
-  Serial.println(F(&quot;# commands: sp 200 | kp 3 | ki 0.01 | kd 30 | out 100 | src 1~4/avg/max&quot;));
+  Serial.println(F(&quot;# commands: sp 200 | spt 200 | kp 3 | ki 0.01 | kd 30 | out 100 | src 1~4/avg/max&quot;));
   Serial.println(F(&quot;#           run | stop | tune | clear | show | log 0/1 | help&quot;));
 }
 
@@ -1593,6 +1594,7 @@ void runCommand(char* s) {
   bool changed = true;
 
   if      (!strcmp(cmd, &quot;sp&quot;)  &amp;&amp; arg) cfg.sp = constrain(v, SP_MIN, SP_MAX);
+  else if (!strcmp(cmd, &quot;spt&quot;) &amp;&amp; arg) { cfg.sp = constrain(v, SP_MIN, SP_MAX); changed = false; }   // 저장하지 않는 목표 변경
   else if (!strcmp(cmd, &quot;kp&quot;)  &amp;&amp; arg) cfg.kp = v &lt; 0 ? 0 : v;
   else if (!strcmp(cmd, &quot;ki&quot;)  &amp;&amp; arg) cfg.ki = v &lt; 0 ? 0 : v;
   else if (!strcmp(cmd, &quot;kd&quot;)  &amp;&amp; arg) cfg.kd = v &lt; 0 ? 0 : v;
@@ -1683,14 +1685,14 @@ void setup() {
   cfgLoad();
 
   char b[17];
-  snprintf(b, sizeof b, &quot;v1.3   TC x%d&quot;, NUM_TC);
+  snprintf(b, sizeof b, &quot;v1.4   TC x%d&quot;, NUM_TC);
   lcdRow(0, 0, &quot;Band Heater PID&quot;);
   lcdRow(0, 1, b);
   delay(1500);                               // MAX6675 첫 변환 대기 겸 스플래시
 
   readThermocouples();
   pvOk = calcPv(pv);
-  Serial.println(F(&quot;# Band Heater PID v1.3&quot;));
+  Serial.println(F(&quot;# Band Heater PID v1.4&quot;));
   printHelp();
   printSettings();
 
@@ -1729,6 +1731,7 @@ void loop() {
         <thead><tr><th>명령</th><th>동작</th></tr></thead>
         <tbody>
           <tr><td class="k">sp 200</td><td>목표온도</td></tr>
+          <tr><td class="k">spt 200</td><td>목표온도, 보드에 저장하지 않음 (v1.4, PC 프로그램 운전용)</td></tr>
           <tr><td class="k">kp 3 · ki 0.01 · kd 30</td><td>PID 게인</td></tr>
           <tr><td class="k">out 80</td><td>최대 출력 %</td></tr>
           <tr><td class="k">src 1 · src avg · src max</td><td>제어 기준 센서</td></tr>
@@ -1809,7 +1812,7 @@ void loop() {
   </dl>
 </section>
 
-<footer>밴드히터 PID 컨트롤러 v1.3 · Arduino Uno/Nano · MAX6675/MAX31855 · SSR · LiquidCrystal I2C</footer>
+<footer>밴드히터 PID 컨트롤러 v1.4 · Arduino Uno/Nano · MAX6675/MAX31855 · SSR · LiquidCrystal I2C</footer>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>

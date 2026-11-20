@@ -1,6 +1,6 @@
 /*
  * =====================================================================
- *  Band Heater PID Controller  v1.3
+ *  Band Heater PID Controller  v1.4
  * ---------------------------------------------------------------------
  *  보드      : Arduino Uno / Nano (ATmega328P)
  *  온도센서  : 열전대 1~4개 + MAX31856(T형 등 모든 타입) / MAX6675(K형) / MAX31855 모듈
@@ -13,6 +13,7 @@
  *              부팅할 때 응답하는 LCD만 쓴다. LCD 1 하나만 달면 v1.2와 같은 화면으로 동작
  *  버튼      : SET / UP / DOWN / RUN  (핀 ↔ GND, 내부 풀업 사용)
  *  시리얼    : 115200bps, 1초마다 로그 (시리얼 플로터 호환) + 명령 ("help")
+ *              "spt 120" 은 목표온도를 EEPROM에 저장하지 않고 바꾼다 (PC가 목표를 자주 바꾸는 승온 프로그램용)
  * ---------------------------------------------------------------------
  *  [조작법]
  *   RUN 1초 길게 누름 : 운전 시작
@@ -886,7 +887,7 @@ void printSettings() {
 }
 
 void printHelp() {
-  Serial.println(F("# commands: sp 200 | kp 3 | ki 0.01 | kd 30 | out 100 | src 1~4/avg/max"));
+  Serial.println(F("# commands: sp 200 | spt 200 | kp 3 | ki 0.01 | kd 30 | out 100 | src 1~4/avg/max"));
   Serial.println(F("#           run | stop | tune | clear | show | log 0/1 | help"));
 }
 
@@ -898,6 +899,7 @@ void runCommand(char* s) {
   bool changed = true;
 
   if      (!strcmp(cmd, "sp")  && arg) cfg.sp = constrain(v, SP_MIN, SP_MAX);
+  else if (!strcmp(cmd, "spt") && arg) { cfg.sp = constrain(v, SP_MIN, SP_MAX); changed = false; }   // 저장하지 않는 목표 변경
   else if (!strcmp(cmd, "kp")  && arg) cfg.kp = v < 0 ? 0 : v;
   else if (!strcmp(cmd, "ki")  && arg) cfg.ki = v < 0 ? 0 : v;
   else if (!strcmp(cmd, "kd")  && arg) cfg.kd = v < 0 ? 0 : v;
@@ -988,14 +990,14 @@ void setup() {
   cfgLoad();
 
   char b[17];
-  snprintf(b, sizeof b, "v1.3   TC x%d", NUM_TC);
+  snprintf(b, sizeof b, "v1.4   TC x%d", NUM_TC);
   lcdRow(0, 0, "Band Heater PID");
   lcdRow(0, 1, b);
   delay(1500);                               // MAX6675 첫 변환 대기 겸 스플래시
 
   readThermocouples();
   pvOk = calcPv(pv);
-  Serial.println(F("# Band Heater PID v1.3"));
+  Serial.println(F("# Band Heater PID v1.4"));
   printHelp();
   printSettings();
 
