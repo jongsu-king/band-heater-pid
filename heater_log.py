@@ -27,7 +27,7 @@ import argparse, atexit, base64, datetime, glob, html, json, os, re, secrets, si
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-VERSION = '1.3'
+VERSION = '1.4'
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = getattr(sys, '_MEIPASS', HERE)    # 응용프로그램으로 묶였을 때는 그 안의 자원 폴더
 USB_VID = {0x0403, 0x1A86, 0x10C4, 0x2341, 0x2A03, 0x067B}        # FTDI, CH340, CP210x, Arduino, Prolific
@@ -128,7 +128,7 @@ class Hub:
         self.scale, self.link, self.thread = 1.0, None, None
         self.ports, self.want = [], ''
         self.gen = 0
-        self.meta = dict(name=clean(name, 60), sample='', memo='', labels=['', '', '', ''])
+        self.meta = dict(name=clean(name, 60), sample='', memo='', labels=['', '', '', ''], pos=[None, None, None, None])
         self.state = dict(connected=False, port='', note='보드를 찾는 중', mode='', fault='', version='',
                           sp=None, kp=None, ki=None, kd=None, outmax=None, src='',
                           relay='', ssr='', energy=None, runtime=None, csv='', sim=False)
@@ -136,12 +136,14 @@ class Hub:
         self.last_port = ''
         # PC 쪽 설정: 온도 프로그램(승온·유지 단계)과 PC 경보. 기록 폴더의 설정.json 에 남는다
         self.cfg = dict(steps=[dict(target=80.0, rate=5.0, hold=10.0)], cycles=1, tol=1.0, end_stop=True,
-                        hi=[None, None, None, None], spread=None, auto_stop=True, heater_w=400.0, presets={})
+                        hi=[None, None, None, None], spread=None, auto_stop=True, heater_w=400.0, presets={},
+                        stab_tol=1.0, stab_rate=0.2, stab_min=3.0, notify=False, rod_d=None, rod_k=398.0)
         self.prog = dict(on=False, step=0, n=0, phase='', sp=None, target=None, left=None)
         self.alarm = dict(active=[], latched='', n=0)
         self._pstop = threading.Event()
         self._tok, self._tok_at, self._dropped, self._drop_at = 10.0, time.monotonic(), 0, 0.0
         self._tok2, self._tok2_at = 50.0, time.monotonic()
+        self.stable = dict(on=False, since=None, mean=None, std=None)
         try:
             with open(os.path.join(self.base_dir, '설정.json'), encoding='utf-8') as f:
                 self._merge_cfg(json.load(f))
@@ -170,6 +172,13 @@ class Hub:
             c['cycles'] = int(f(d['cycles'], 1, 100) or 1)
         if 'heater_w' in d:
             c['heater_w'] = f(d['heater_w'], 1, 10000) or 400.0
+        for k, lo, hi, dflt in (('stab_tol', 0.05, 50, 1.0), ('stab_rate', 0.01, 50, 0.2), ('stab_min', 0.5, 120, 3.0), ('rod_k', 0.01, 5000, 398.0)):
+            if k in d:
+                c[k] = f(d[k], lo, hi) or dflt
+        if 'rod_d' in d:
+            c['rod_d'] = f(d['rod_d'], 0.1, 1000)
+        if 'notify' in d:
+            c['notify'] = bool(d['notify'])
         if isinstance(d.get('presets'), dict):                     # 이름 붙인 프로그램 묶음. 통째로 바꿔 넣는다
             pre = {}
             for k, v in list(d['presets'].items())[:30]:
@@ -203,6 +212,52 @@ class Hub:
                     '/'.join('-' if v is None else '%g' % v for v in c['hi']),
                     '-' if c['spread'] is None else '%g' % c['spread'], '켬' if c['auto_stop'] else '끔'))
 
+    # ---------- 알림 (맥의 알림 센터). 켜 둔 경우에만 ----------
+    def _notify(self, text):
+        if not self.cfg.get('notify') or sys.platform != 'darwin':
+            return
+        q = lambda x: str(x).replace('\\', ' ').replace('"', "'")[:180]
+        title = '밴드 히터' + (' · ' + self.meta['name'] if self.meta['name'] else '')
+        try:
+            subprocess.Popen(['osascript', '-e', 'display notification "%s" with title "%s"' % (q(text), q(title))],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+    # ---------- 안정 판정: 운전 중에 PV가 목표 ±tol 안에 있고 기울기가 작게 stab_min 분 동안 이어지면 안정 ----------
+    def _check_stable(self, row):
+        c, st = self.cfg, self.stable
+        t, pv, sp, mode = row[0], row[1], row[2], row[8]
+        W = c['stab_min'] * 60.0
+        ok = False
+        if mode == 1 and pv is not None and sp is not None and abs(pv - sp) <= c['stab_tol']:
+            R = self.rows
+            i = len(R) - 1
+            n = sx = sy = sxx = sxy = syy = 0.0
+            broke = False
+            while i >= 0 and R[i][0] >= t - W:
+                r = R[i]
+                if r[8] != 1 or r[1] is None or r[2] != sp or abs(r[1] - sp) > c['stab_tol']:
+                    broke = True
+                    break
+                x, y = r[0] - t, r[1] - sp
+                n += 1; sx += x; sy += y; sxx += x * x; sxy += x * y; syy += y * y
+                i -= 1
+            covered = not broke and i >= 0                         # 창보다 앞선 줄이 있어야 창 전체를 본 것
+            if covered and n >= 10:
+                den = sxx - sx * sx / n
+                slope = (sxy - sx * sy / n) / den * 60.0 if den > 1e-9 else 0.0
+                if abs(slope) <= c['stab_rate']:
+                    ok = True
+                    st.update(mean=sp + sy / n, std=(max(0.0, (syy - sy * sy / n) / (n - 1))) ** 0.5)
+        if ok and not st['on']:
+            st.update(on=True, since=t)
+            txt = '안정: PV %.2f ± %.2f °C (목표 %.1f, 최근 %g분)' % (st['mean'], st['std'], sp, c['stab_min'])
+            self._event('stable', txt)
+            self._notify(txt)
+        elif not ok and st['on']:
+            st.update(on=False, since=None)
+
     # ---------- PC 경보: 채널 상한, 채널 간 차이 ----------
     def _alarm_conditions(self, row):
         c, out = self.cfg, []
@@ -226,6 +281,7 @@ class Hub:
         if cond and a['n'] == 2 and not a['latched']:              # 두 번 연속일 때만 (한 번 튄 값은 넘김)
             a['latched'] = cond[0]
             self._event('alarm', 'PC 경보: ' + '; '.join(cond))
+            self._notify('PC 경보: ' + cond[0])
             if self.cfg['auto_stop'] and self.state['mode'] in ('RUN', 'TUNE'):
                 self._pstop.set()
                 self.send('stop', who='경보')
@@ -369,6 +425,7 @@ class Hub:
                 why[0] = '끝: 마지막 목표 유지'
         finally:
             ev('프로그램 ' + (why[0] or '중단'))
+            self._notify('프로그램 ' + (why[0] or '중단'))
             status(on=False, phase='', left=None)
 
     # ---------- 구간 내보내기, 통계 저장 ----------
@@ -440,7 +497,7 @@ class Hub:
                 self.csv.flush()
         if not os.path.exists(base + '.csv'):
             return None
-        rows, events, meta = [], [], dict(name='', sample='', memo='', labels=['', '', '', ''])
+        rows, events, meta = [], [], dict(name='', sample='', memo='', labels=['', '', '', ''], pos=[None, None, None, None])
         with open(base + '.csv', encoding='utf-8') as f:
             next(f, None)
             for line in f:
@@ -460,8 +517,9 @@ class Hub:
             with open(base + '_meta.json', encoding='utf-8') as f:
                 j = json.load(f)
             e, ch = j.get('experiment') or {}, j.get('channels') or {}
+            ps = j.get('positions_mm') or {}
             meta = dict(name=e.get('name', ''), sample=e.get('sample', ''), memo=e.get('memo', ''),
-                        labels=[ch.get('T%d' % i, '') for i in range(1, 5)])
+                        labels=[ch.get('T%d' % i, '') for i in range(1, 5)], pos=[num(ps.get('T%d' % i)) for i in range(1, 5)])
             started = j.get('started')
         except (OSError, ValueError):
             started = None
@@ -570,6 +628,8 @@ class Hub:
             self.raw = open(base + '_raw.log', 'w', buffering=1, encoding='utf-8')
             self.t0 = time.monotonic()
             self.rows, self.events, self.nrows = [], [], 0
+            if hasattr(self, 'stable'):
+                self.stable.update(on=False, since=None)
             self.gen += 1
             s = self.state
             s['csv'] = base + '.csv'
@@ -601,6 +661,8 @@ class Hub:
                 m[k] = clean(d[k], n)
         if isinstance(d.get('labels'), list):
             m['labels'] = [clean(x, 24) for x in (d['labels'] + ['', '', '', ''])[:4]]
+        if isinstance(d.get('pos'), list):                         # 열전대 위치 (mm). 비우면 없음
+            m['pos'] = [num(x) for x in (d['pos'] + [None] * 4)[:4]]
 
     def set_meta(self, d):
         with self.lock:
@@ -615,6 +677,7 @@ class Hub:
             'ended': self.ended.isoformat(timespec='seconds') if self.ended else None,    # null 이면 기록 중이거나 강제로 꺼진 것 (CSV는 줄마다 저장됨)
             'experiment': {k: self.meta[k] for k in ('name', 'sample', 'memo')},
             'channels': {'T%d' % (i + 1): self.meta['labels'][i] for i in range(4)},
+            'positions_mm': {'T%d' % (i + 1): self.meta['pos'][i] for i in range(4)},
             'board': {'port': self.last_port, 'firmware': s['version'], 'simulated': s['sim'], 'time_scale': self.scale},
             'settings_at_start': self.first_settings,
             'sample_interval_s': 1.0,
@@ -693,6 +756,7 @@ class Hub:
                 self.csv.write('%s,%.2f,%s,%s\n' % (stamp_ms(), t,
                                ','.join('' if v is None else f % v for f, v in zip(FMT, vals)), s['mode']))
                 self._check_alarm(row)
+                self._check_stable(row)
             elif kind == 'set':
                 first = s['sp'] is None
                 diff = ['%s %s → %s' % (k.upper(), s[k], d[k]) for k in ('sp', 'kp', 'ki', 'kd', 'outmax', 'src')
@@ -723,6 +787,7 @@ class Hub:
                     s['mode'], s['fault'] = 'STOP', ''
                 elif d.startswith('!! FAULT: '):
                     s['mode'], s['fault'] = 'FAULT', d[10:]
+                    self._notify('보드 알람: ' + d[10:])
                 elif d == 'Auto-tune start':
                     s['mode'] = 'TUNE'
                 elif d == '# boot':
@@ -743,6 +808,9 @@ class Hub:
                 self.state.update(mode='', fault='', relay='', ssr='')
             if changed and self.csv:
                 self._event('conn', ('연결됨: ' + port) if ok else ('연결 끊김' + (': ' + note if note else '')))
+                if not ok:
+                    self.stable.update(on=False, since=None)
+                    self._notify('보드 연결이 끊김')
                 self._write_meta()
 
     # ---------- 웹 화면이 읽어 가는 것 ----------
@@ -757,7 +825,7 @@ class Hub:
                         state=st, meta=dict(self.meta), elapsed=self._now(),
                         ports=list(self.ports), want=self.want, sim_ok=sim_exe() is not None, folder=self.out_dir,
                         cfg=json.loads(json.dumps(self.cfg)), prog=dict(self.prog),
-                        alarm=dict(active=list(self.alarm['active']), latched=self.alarm['latched']),
+                        alarm=dict(active=list(self.alarm['active']), latched=self.alarm['latched']), stable=dict(self.stable),
                         spcmd='spt' if fw_tuple(self.state['version']) >= (1, 4) else 'sp')
 
     def _base_for(self, rid):

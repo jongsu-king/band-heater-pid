@@ -170,6 +170,7 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
           <div class="ledrow"><span id="led_ssr" class="led"></span>SSR</div>
           <div class="ledrow"><span id="led_fault" class="led red"></span>보드 알람</div>
           <div class="ledrow"><span id="led_pc" class="led red"></span>PC 경보</div>
+          <div class="ledrow"><span id="led_stab" class="led"></span>안정</div>
         </div>
       </fieldset>
 
@@ -208,7 +209,7 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
       </fieldset>
 
       <div id="tabs">
-        <button data-tab="p_stat" class="on">통계</button><button data-tab="p_resp">응답</button><button data-tab="p_cur">커서·맞춤</button><button data-tab="p_an">분석</button><button data-tab="p_prog">프로그램</button><button data-tab="p_alarm">경보</button><button data-tab="p_exp">실험</button><button data-tab="p_ev">사건</button><button data-tab="p_rec">파일</button><button data-tab="p_set">설정</button>
+        <button data-tab="p_stat" class="on">통계</button><button data-tab="p_resp">응답</button><button data-tab="p_cur">커서·맞춤</button><button data-tab="p_model">모델</button><button data-tab="p_an">분석</button><button data-tab="p_prog">프로그램</button><button data-tab="p_alarm">경보</button><button data-tab="p_exp">실험</button><button data-tab="p_ev">사건</button><button data-tab="p_rec">파일</button><button data-tab="p_set">설정</button>
         <button id="btall" title="탭 영역을 키움">탭 크게</button>
       </div>
       <div id="pages">
@@ -225,11 +226,15 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
             <select id="fit_ch"><option>PV</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select><span id="fitcap" class="grow"></span></div>
           <table id="fit" class="tbl kv" hidden></table>
         </div>
+        <div id="p_model" hidden>
+          <div class="row" style="margin:0 0 5px"><button id="bmodel">보이는 구간으로 모델 맞춤</button><button id="bmodel0">지움</button><span id="modelcap" class="grow"></span></div>
+          <table id="model" class="tbl kv"></table>
+        </div>
         <div id="p_an" hidden>
           <div class="fill">
             <div class="row" style="margin-top:0">
               <label for="an_view">보기</label>
-              <select id="an_view"><option value="rate">승온 속도 (°C/분)</option><option value="err">편차 PV − SP</option><option value="diff">채널 간 차이</option><option value="hist">분포</option><option value="xy">출력 – 온도</option></select>
+              <select id="an_view"><option value="rate">승온 속도 (°C/분)</option><option value="err">편차 PV − SP</option><option value="diff">채널 간 차이</option><option value="hist">분포</option><option value="xy">출력 – 온도</option><option value="prof">위치별 온도</option></select>
               <label for="an_ch">채널</label><select id="an_ch"><option>PV</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select>
               <label for="an_win">기울기 창</label><select id="an_win"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">120 s</option><option value="300">300 s</option></select>
               <span id="ancap" class="grow"></span>
@@ -266,7 +271,9 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
                 <tr><td>T4 상한</td><td><input id="a_h3" type="number" step="any"></td></tr>
                 <tr><td>채널 간 최대 차이</td><td><input id="a_sp" type="number" step="any" min="0"></td></tr>
               </table>
-              <div class="row"><label><input id="a_stop" type="checkbox">경보 때 히터 정지</label><label><input id="a_beep" type="checkbox">경보음</label><span class="grow"></span><button id="basave">저장</button></div>
+              <div class="row"><label><input id="a_stop" type="checkbox">경보 때 히터 정지</label><label><input id="a_beep" type="checkbox">경보음</label></div>
+              <div class="row"><span>안정 판정: 목표 ±</span><input id="a_tol" type="number" step="any" min="0.05" class="num5"><span>°C,  기울기</span><input id="a_rate" type="number" step="any" min="0.01" class="num5"><span>°C/분 이하,</span><input id="a_min" type="number" step="any" min="0.5" class="num5"><span>분 동안</span></div>
+              <div class="row"><label><input id="a_notify" type="checkbox">맥 알림 (안정, 프로그램 끝, 경보, 연결 끊김)</label><span class="grow"></span><button id="basave">저장</button></div>
             </div>
             <div>
               <table id="astat" class="tbl kv"></table>
@@ -283,6 +290,7 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
             <label for="m_l1">T2 위치</label><input id="m_l1" maxlength="24">
             <label for="m_l2">T3 위치</label><input id="m_l2" maxlength="24">
             <label for="m_l3">T4 위치</label><input id="m_l3" maxlength="24">
+            <label for="m_p0">T1 ~ T4 좌표</label><span class="wide row" style="margin:0"><input id="m_p0" type="number" step="any" class="num5" aria-label="T1 좌표"><input id="m_p1" type="number" step="any" class="num5" aria-label="T2 좌표"><input id="m_p2" type="number" step="any" class="num5" aria-label="T3 좌표"><input id="m_p3" type="number" step="any" class="num5" aria-label="T4 좌표"><span>mm  (같은 축 위의 거리. 분석의 위치별 온도에 씀)</span></span>
           </div>
           <div class="row" style="margin-top:10px"><button id="bmeta">저장</button><button id="bnew">새 파일로 기록 시작</button></div>
         </div>
@@ -307,7 +315,8 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
             </div>
             <div>
               <table id="info" class="tbl kv"></table>
-              <div class="row"><label for="e_hw">히터 정격</label><input id="e_hw" type="number" min="1" max="10000" step="1" class="num5"><span>W</span><button id="bhw">저장</button><span class="grow"></span></div>
+              <div class="row"><label for="e_hw">히터 정격</label><input id="e_hw" type="number" min="1" max="10000" step="1" class="num5"><span>W</span><span class="grow"></span></div>
+              <div class="row"><label for="e_rd">봉 지름</label><input id="e_rd" type="number" min="0.1" step="any" class="num5"><span>mm</span><label for="e_rk">열전도도</label><input id="e_rk" type="number" min="0.01" step="any" class="num5"><span>W/m·K</span><button id="bhw">저장</button></div>
             </div>
           </div>
         </div>
@@ -336,18 +345,18 @@ dialog p { margin: 0 0 14px; white-space: pre-line; }
 const TOKEN = '__TOKEN__';
 const SER = [['PV', 'pv'], ['SP', 'sp'], ['T1', 't1'], ['T2', 't2'], ['T3', 't3'], ['T4', 't4'], ['OUT', 'out']];
 const IDX = { PV: 1, SP: 2, OUT: 3, T1: 4, T2: 5, T3: 6, T4: 7 }, MODE = 8, BAND = 1.0, HOLD = 60, PANEL = '#d6d6d6';
-const KIND = { board: '보드', cmd: '명령', mark: '표시', set: '설정', mode: '상태', conn: '연결', prog: '프로그램', alarm: '경보' };
+const KIND = { board: '보드', cmd: '명령', mark: '표시', set: '설정', mode: '상태', conn: '연결', prog: '프로그램', alarm: '경보', stable: '안정' };
 const PHASE = { start: '시작', ramp: '목표 이동', wait: '도달 대기', hold: '유지' };
 // 화면용(검은 바탕)과 그림 저장용(흰 바탕) 색
 const PAL = {
   screen: { bg: '#000000', grid: '#303030', text: '#000000', pv: '#ffffff', sp: '#ffe600', t1: '#ff4d4d', t2: '#3dff3d', t3: '#4db8ff', t4: '#ff66ff', out: '#ffa31a',
-            cur: '#ffe600', ca: '#00e5ff', cb: '#ff9d3c', ref: '#9a9a9a', fit: '#e8e8e8', mark: '#d0d0d0', tipbg: '#101010', tipfg: '#ffffff', tipln: '#909090', sel: 'rgba(255,255,255,0.2)', m1: '#2dea2d', m2: '#ffd91a', m3: '#ff2a2a', page: PANEL },
+            cur: '#ffe600', ca: '#00e5ff', cb: '#ff9d3c', ref: '#9a9a9a', fit: '#e8e8e8', model: '#b9a6ff', mark: '#d0d0d0', tipbg: '#101010', tipfg: '#ffffff', tipln: '#909090', sel: 'rgba(255,255,255,0.2)', m1: '#2dea2d', m2: '#ffd91a', m3: '#ff2a2a', page: PANEL },
   print:  { bg: '#ffffff', grid: '#d4d4d4', text: '#000000', pv: '#000000', sp: '#6b6b6b', t1: '#d9480f', t2: '#2b8a3e', t3: '#1971c2', t4: '#c2255c', out: '#1971c2',
-            cur: '#000000', ca: '#0b7285', cb: '#b35c00', ref: '#9a9a9a', fit: '#444444', mark: '#555555', tipbg: '#ffffff', tipfg: '#000000', tipln: '#888888', sel: 'rgba(0,0,0,0.1)', m1: '#2b8a3e', m2: '#e0a800', m3: '#c92a2a', page: '#ffffff' },
+            cur: '#000000', ca: '#0b7285', cb: '#b35c00', ref: '#9a9a9a', fit: '#444444', model: '#5b3fc4', mark: '#555555', tipbg: '#ffffff', tipfg: '#000000', tipln: '#888888', sel: 'rgba(0,0,0,0.1)', m1: '#2b8a3e', m2: '#e0a800', m3: '#c92a2a', page: '#ffffff' },
 };
 // L = 지금 기록 중인 것(항상 받아 둠). rows, events, meta = 차트와 표에 보이는 것 (지난 기록을 볼 때는 그 기록).
-const L = { rows: [], held: [], events: [], meta: { labels: ['', '', '', ''] } };
-let gen = 0, rows = L.rows, events = L.events, meta = L.meta, V = null, REF = null, FIT = null;
+const L = { rows: [], held: [], events: [], meta: { labels: ['', '', '', ''], pos: [null, null, null, null] } };
+let gen = 0, rows = L.rows, events = L.events, meta = L.meta, V = null, REF = null, FIT = null, MODEL = null, stable = {};
 let state = {}, elapsed = 0, ports = [], want = '', simOk = false, portsShown = '';
 let cfg = { steps: [], hi: [null, null, null, null], presets: {}, heater_w: 400, cycles: 1 }, prog = {}, alarm = { active: [], latched: '' }, spcmd = 'sp', progShown = '', alarmShown = '', miscShown = '', pDirty = false, aDirty = false, pSteps = [];
 let win = 1800, sel = null, lost = false, lastRowAt = 0, hover = null, drag = null, shownEv = null, metaShown = '', G = null, frozen = false, curs = [null, null];
@@ -375,13 +384,13 @@ async function poll() {
     const d = await r.json();
     if (d.gen !== gen) {                                          // 새 파일로 넘어감
       gen = d.gen; L.rows = []; L.held = []; L.events = [];
-      if (!V) { rows = L.rows; events = L.events; shownEv = null; sel = null; curs = [null, null]; FIT = null; if (win < 0) win = 1800; }
+      if (!V) { rows = L.rows; events = L.events; shownEv = null; sel = null; curs = [null, null]; FIT = null; MODEL = null; if (win < 0) win = 1800; }
     }
     if (d.rows.length) lastRowAt = Date.now();
     for (const x of d.rows) (frozen ? L.held : L.rows).push(x);
     for (const e of d.events) L.events.push(e);
     state = d.state; L.meta = d.meta; if (!V) meta = L.meta; elapsed = d.elapsed; ports = d.ports || []; want = d.want || ''; simOk = !!d.sim_ok;
-    cfg = d.cfg || cfg; prog = d.prog || {}; alarm = d.alarm || alarm; spcmd = d.spcmd || 'sp';
+    cfg = d.cfg || cfg; prog = d.prog || {}; alarm = d.alarm || alarm; stable = d.stable || {}; spcmd = d.spcmd || 'sp';
     lost = false; more = L.rows.length + L.held.length < d.total;
   } catch (e) { lost = true; }
   render();
@@ -476,7 +485,43 @@ function expfit(j, ia, ib) {
   return { tA, tB: tA + span, tau, a: r.a, b: r.b, n, r2: sst > 0 ? 1 - r.s / sst : null, rmse: Math.sqrt(r.s / n), weak: bq >= 79 || bq <= 0 };
 }
 const runStart = R => { for (const r of R) if (r[MODE] === 1) return r[0]; return 0; };
-
+// 보이는 구간의 출력 u(%)와 PV로 1차 지연 + 시간 지연 모델을 맞춘다:  τ·dT/dt = K·(u(t − θ) − u₀) − (T − T₀)
+// 구간의 첫 점에서 정지해 있었다고 본다. τ와 θ는 격자에서 고른 뒤 두 번 좁히고, K는 그때마다 최소제곱으로 구한다.
+function identify() {
+  const [t0, t1] = range(), i0 = lower(t0), i1 = lower(t1 + 1e-6), n = i1 - i0;
+  if (n < 60) return { err: '구간이 너무 짧음 (60줄 이상 필요)' };
+  const stp = Math.max(1, Math.floor(n / 1500)), t = [], y = [], u = [];
+  for (let i = i0; i < i1; i += stp) {                            // 여러 줄을 묶어 평균
+    let st = 0, sy = 0, su = 0, c = 0;
+    for (let k = i; k < Math.min(i1, i + stp); k++) { const r = rows[k]; if (r[1] == null || r[3] == null) continue; st += r[0]; sy += r[1]; su += r[3]; c++; }
+    if (c) { t.push(st / c); y.push(sy / c); u.push(su / c); }
+  }
+  const m = t.length; if (m < 40) return { err: '값이 모자람' };
+  if (Math.max(...u) - Math.min(...u) < 5) return { err: '출력이 거의 변하지 않아 모델을 정할 수 없음' };
+  if (Math.max(...y) - Math.min(...y) < 3) return { err: '온도 변화가 3 °C보다 작음' };
+  const T0 = y[0], u0 = u[0], span = t[m - 1] - t[0], x = new Float64Array(m);
+  function run(tau, th) {                                         // x = 입력 변화 (u − u₀)에 대한 단위 이득 응답
+    let xv = 0, j = 0, Sxy = 0, Sxx = 0; x[0] = 0;
+    for (let k = 1; k < m; k++) {
+      const td = t[k - 1] - th; while (j + 1 < m && t[j + 1] <= td) j++;
+      const ud = td < t[0] ? 0 : u[j] - u0, a = Math.exp(-(t[k] - t[k - 1]) / tau);
+      xv = ud + (xv - ud) * a; x[k] = xv; const dy = y[k] - T0; Sxy += xv * dy; Sxx += xv * xv;
+    }
+    if (Sxx < 1e-12) return { s: Infinity };
+    const K = Sxy / Sxx; let s2 = 0; for (let k = 0; k < m; k++) { const r = y[k] - T0 - K * x[k]; s2 += r * r; }
+    return { s: s2, K };
+  }
+  let best = { s: Infinity }, bt = 0, bh = 0; const thMax = Math.min(span / 4, 600);
+  const scan = (taus, ths) => { for (const tau of taus) for (const th of ths) { const r = run(tau, th); if (r.s < best.s) { best = r; bt = tau; bh = th; } } };
+  const taus = [], ths = []; for (let q = 0; q <= 50; q++) taus.push(span / 200 * Math.pow(800, q / 50)); for (let q = 0; q <= 30; q++) ths.push(thMax * (q / 30) * (q / 30));
+  scan(taus, ths); const edge = bt <= taus[0] * 1.001 || bt >= taus[50] * 0.999;
+  for (let pass = 0, ft = Math.pow(800, 1 / 50), dh = thMax / 15; pass < 2; pass++, ft = Math.pow(ft, 0.2), dh /= 5) {
+    const a = [], b = []; for (let q = -5; q <= 5; q++) { a.push(bt * Math.pow(ft, q / 5)); const h = bh + dh * q / 5; if (h >= 0) b.push(h); } scan(a, b);
+  }
+  const fin = run(bt, bh); let my = 0; for (const v of y) my += v; my /= m; let sst = 0; for (const v of y) sst += (v - my) * (v - my);
+  return { K: fin.K, tau: bt, theta: bh, T0, u0, n: m, t0: t[0], t1: t[m - 1], r2: sst > 0 ? 1 - fin.s / sst : null, rmse: Math.sqrt(fin.s / m), weak: edge || !(fin.K > 0),
+           tm: t, ym: Array.from(x, v => T0 + fin.K * v) };
+}
 // ---------- 화면 ----------
 const led = (id, on) => $(id).classList.toggle('on', !!on);
 const row2 = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
@@ -516,6 +561,15 @@ function tables() {                                              // 통계, 응�
         ['T∞ (끝 온도)', FIT.a.toFixed(2) + ' °C'], ['ΔT (tA에서의 차이)', sgn(FIT.b, 2) + ' °C'], ['τ (시간 상수)', FIT.tau.toFixed(1) + ' s  (' + (FIT.tau / 60).toFixed(2) + ' 분)'],
         ['R²,  RMSE', fx(FIT.r2, 5) + ',  ' + FIT.rmse.toFixed(3) + ' °C'], ['비고', FIT.weak ? '구간이 τ에 비해 너무 짧거나 길어 τ가 불확실함' : '']]; }
   }
+  if (MODEL && !MODEL.err) {
+    const M = MODEL;
+    out.model = [['모형', 'τ · dT/dt = K · (u(t − θ) − u₀) − (T − T₀)'], ['구간', `${clock(M.t0, true)} ~ ${clock(M.t1, true)}  (묶음 ${M.n}개),  T₀ ${M.T0.toFixed(2)} °C,  u₀ ${M.u0.toFixed(1)} %`],
+      ['K (이득)', M.K.toFixed(3) + ' °C/%'], ['τ (시간 상수)', M.tau.toFixed(1) + ' s  (' + (M.tau / 60).toFixed(2) + ' 분)'], ['θ (지연)', M.theta.toFixed(1) + ' s'],
+      ['R²,  RMSE', fx(M.r2, 5) + ',  ' + M.rmse.toFixed(3) + ' °C'],
+      ['지금 목표를 유지하는 출력 (모델)', state.sp != null && M.K > 0 ? (M.u0 + (state.sp - M.T0) / M.K).toFixed(1) + ' %  (목표 ' + state.sp + ' °C)' : '–'],
+      ['출력 100 %를 계속 주면 (선형 외삽)', '약 ' + (M.T0 + M.K * (100 - M.u0)).toFixed(0) + ' °C. 실제로는 온도가 오를수록 열손실이 커져 이보다 낮음'],
+      ['비고', M.weak ? '구간이 모자라 τ나 K가 불확실함. 정상상태까지 포함한 구간으로 다시 하세요' : '']];
+  }
   return out;
 }
 function render() {
@@ -529,11 +583,11 @@ function render() {
   const pcAlarm = !lost && !!alarm.latched, bdAlarm = on && mode === 'FAULT', hw = cfg.heater_w || 400;
   led('led_conn', on); led('led_sim', state.sim && !lost);
   led('led_run', on && mode === 'RUN'); led('led_tune', on && mode === 'TUNE'); led('led_fault', bdAlarm); led('led_pc', pcAlarm);
-  led('led_relay', on && state.relay === 'ON'); led('led_ssr', on && state.ssr === 'ON');
+  led('led_relay', on && state.relay === 'ON'); led('led_ssr', on && state.ssr === 'ON'); led('led_stab', on && stable.on);
 
   // 위쪽 상태 줄 (항상 지금 기록 중인 것)
   $('t_name').textContent = [L.meta.name || '(실험 이름 없음)', L.meta.sample].filter(Boolean).join('  /  ');
-  $('t_state').textContent = on ? (mode || '–') : '–'; $('t_state').className = 'state ' + (on ? mode : '') + (bdAlarm ? ' blink' : '');
+  $('t_state').textContent = on ? (mode || '–') + (stable.on ? ' · 안정' : '') : '–'; $('t_state').className = 'state ' + (on ? mode : '') + (bdAlarm ? ' blink' : '');
   $('t_alarm').hidden = !pcAlarm; $('t_alarm').textContent = pcAlarm ? 'PC 경보: ' + alarm.latched : '';
   $('t_prog').hidden = !prog.on;
   const ptxt = prog.on ? `프로그램 ${prog.cycles > 1 ? prog.cycle + '/' + prog.cycles + '회  ' : ''}${prog.step || 1}/${prog.n}  ${PHASE[prog.phase] || ''}` + (prog.sp != null ? `  ${fx(prog.sp, 1)} → ${fx(prog.target, 1)} °C` : '') + (prog.left != null ? `  남은 ${clock(prog.left, true)}` : '') : '';
@@ -589,9 +643,11 @@ function render() {
   $('curnote').textContent = 'A ' + (tb.ra ? clock(tb.ra[0], true) : '–') + '   B ' + (tb.rb ? clock(tb.rb[0], true) : '–');
   $('fit').hidden = !tb.fit; if (tb.fit) $('fit').innerHTML = tb.fit.filter(r => r[1] !== '').map(([k, v]) => row2(esc(k), esc(v))).join('');
   $('fitcap').textContent = $('fit_on').checked && !tb.fit ? '커서 A와 B를 찍으면 계산함' : '';
-
+  $('modelcap').textContent = MODEL && MODEL.err ? MODEL.err : (MODEL ? '' : '운전 시작부터 정상상태까지 보이게 한 뒤 누르세요');
+  $('modelcap').className = 'grow' + (MODEL && MODEL.err ? ' bad' : '');
+  $('model').innerHTML = tb.model ? tb.model.filter(r => r[1] !== '').map(([k, v]) => row2(esc(k), esc(v))).join('') : '';
   // 프로그램, 경보 설정: 서버 값이 바뀌었을 때만 다시 채움. 고치는 중(저장 전)인 칸은 건드리지 않음
-  const pj = JSON.stringify([cfg.steps, cfg.cycles, cfg.tol, cfg.end_stop]), aj = JSON.stringify([cfg.hi, cfg.spread, cfg.auto_stop]), xj = JSON.stringify([Object.keys(cfg.presets || {}), hw]);
+  const pj = JSON.stringify([cfg.steps, cfg.cycles, cfg.tol, cfg.end_stop]), aj = JSON.stringify([cfg.hi, cfg.spread, cfg.auto_stop, cfg.stab_tol, cfg.stab_rate, cfg.stab_min, cfg.notify]), xj = JSON.stringify([Object.keys(cfg.presets || {}), hw, cfg.rod_d, cfg.rod_k]);
   if (pj !== progShown && !pDirty && !inside('p_prog')) {
     progShown = pj; pSteps = cfg.steps.map(s => ({ ...s })); drawSteps();
     $('p_tol').value = cfg.tol; $('p_end').checked = !!cfg.end_stop; $('p_cyc').value = cfg.cycles || 1;
@@ -599,9 +655,10 @@ function render() {
   if (aj !== alarmShown && !aDirty && !inside('p_alarm')) {
     alarmShown = aj; for (let i = 0; i < 4; i++) $('a_h' + i).value = cfg.hi[i] == null ? '' : cfg.hi[i];
     $('a_sp').value = cfg.spread == null ? '' : cfg.spread; $('a_stop').checked = !!cfg.auto_stop;
+    $('a_tol').value = cfg.stab_tol; $('a_rate').value = cfg.stab_rate; $('a_min').value = cfg.stab_min; $('a_notify').checked = !!cfg.notify;
   }
-  if (xj !== miscShown && document.activeElement !== $('p_pre') && document.activeElement !== $('e_hw')) {
-    miscShown = xj; $('e_hw').value = hw;
+  if (xj !== miscShown && document.activeElement !== $('p_pre') && !inside('p_set')) {
+    miscShown = xj; $('e_hw').value = hw; $('e_rd').value = cfg.rod_d == null ? '' : cfg.rod_d; $('e_rk').value = cfg.rod_k;
     $('p_pre').innerHTML = Object.keys(cfg.presets || {}).map(k => `<option>${esc(k)}</option>`).join('') || '<option value="">(없음)</option>';
   }
   const cyc = prog.on ? prog.cycles : (val('p_cyc') || 1), plan = planned(prog.on ? cfg.steps : pSteps, last ? last[1] : 25, cyc);
@@ -611,7 +668,8 @@ function render() {
     row2('계획 시간 (이동 + 유지)', clock(plan.t, true)) + row2('목표 변경 명령', spcmd === 'spt' ? 'spt (저장 안 함)' : 'sp (1 °C 단위, 보드에 저장)');
   $('bpgo').disabled = !on || !!prog.on; $('bpstop').disabled = lost || !prog.on;
   for (const id of ['bstep', 'bpsave', 'bpload', 'bpadd', 'bpdel']) $(id).disabled = lost || !!prog.on;
-  $('astat').innerHTML = row2('걸린 경보', alarm.latched ? esc(alarm.latched) : '없음') + row2('지금 넘은 항목', alarm.active.length ? alarm.active.map(esc).join('<br>') : '없음');
+  $('astat').innerHTML = row2('걸린 경보', alarm.latched ? esc(alarm.latched) : '없음') + row2('지금 넘은 항목', alarm.active.length ? alarm.active.map(esc).join('<br>') : '없음') +
+    row2('안정', stable.on ? `PV ${fx(stable.mean, 2)} ± ${fx(stable.std, 2)} °C,  ${clock(stable.since, true)}부터` : '아님');
   $('back').disabled = lost || !alarm.latched; $('basave').disabled = lost;
 
   // 설정
@@ -638,14 +696,14 @@ function render() {
   const mj = JSON.stringify(L.meta);
   if (mj !== metaShown && !inside('p_exp')) {
     metaShown = mj; $('m_name').value = L.meta.name || ''; $('m_sample').value = L.meta.sample || ''; $('m_memo').value = L.meta.memo || '';
-    for (let i = 0; i < 4; i++) $('m_l' + i).value = L.meta.labels[i] || '';
+    for (let i = 0; i < 4; i++) { $('m_l' + i).value = L.meta.labels[i] || ''; $('m_p' + i).value = (L.meta.pos || [])[i] == null ? '' : L.meta.pos[i]; }
   }
   for (const b of document.querySelectorAll('[data-win]')) b.classList.toggle('on', !sel && +b.dataset.win === win);
   $('bhold').classList.toggle('on', frozen);
   $('selnote').textContent = sel ? '선택 구간' : '';
   $('vnote').hidden = $('blive').hidden = !V; if (V) $('vnote').textContent = '지난 기록 보는 중: ' + (V.meta.name || V.id) + '  (' + (V.started || '').replace('T', ' ').slice(0, 16) + ')';
   $('legend').innerHTML = SER.map(([k, c]) => `<button class="${vis[k] ? '' : 'off'}" data-k="${k}"><span class="chip"><i style="background:${PAL.screen[c]}"></i></span>${esc(label(k))}</button>`).join('') +
-    (REF ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.ref}"></i></span>비교: ${esc(REF.name)}</span>` : '') + (FIT ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.fit}"></i></span>맞춤</span>` : '');
+    (REF ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.ref}"></i></span>비교: ${esc(REF.name)}</span>` : '') + (MODEL && !MODEL.err ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.model}"></i></span>모델</span>` : '') + (FIT ? `<span class="it"><span class="chip"><i style="background:${PAL.screen.fit}"></i></span>맞춤</span>` : '');
   draw(); thermo(); draw2(); drawPlan(plan);
 }
 function drawSteps() {
@@ -745,6 +803,11 @@ function draw(forFile) {
   line('PV', Y, P.pv, 2.2, null, T, hT);
   for (const k of ['T1', 'T2', 'T3', 'T4']) line(k, Y, P[k.toLowerCase()], 1.2, null, T, hT);
   line('OUT', YO, P.out, 1.4, null, yOut, hOut);
+  if (MODEL && !MODEL.err) {                                      // 맞춘 모델이 같은 출력을 받았을 때의 온도
+    clip(T, hT); c.strokeStyle = P.model; c.lineWidth = 1.8; c.setLineDash([7, 3]); c.beginPath();
+    MODEL.tm.forEach((t, n) => { const x = X(t), y = Y(MODEL.ym[n]); if (n) c.lineTo(x, y); else c.moveTo(x, y); });
+    c.stroke(); c.restore(); c.setLineDash([]);
+  }
   // 지수 맞춤 곡선: A ~ B는 실선, B 뒤는 점선(예상)
   if (FIT) {
     const f = t => FIT.a + FIT.b * Math.exp(-(t - FIT.tA) / FIT.tau);
@@ -776,7 +839,7 @@ function draw(forFile) {
   if (forFile) {                                                  // 그림으로 저장할 때만 범례와 실험 이름을 차트 위에 넣음
     c.textAlign = 'left'; c.textBaseline = 'middle'; let x = Lm;
     const items = SER.filter(([k]) => vis[k]).map(([k, col]) => [P[col], label(k), k === 'SP' ? [5, 3] : []]);
-    if (REF) items.push([P.ref, '비교: ' + REF.name, [5, 3]]); if (FIT) items.push([P.fit, '맞춤 τ = ' + FIT.tau.toFixed(0) + ' s', []]);
+    if (REF) items.push([P.ref, '비교: ' + REF.name, [5, 3]]); if (MODEL && !MODEL.err) items.push([P.model, '모델', [7, 3]]); if (FIT) items.push([P.fit, '맞춤 τ = ' + FIT.tau.toFixed(0) + ' s', []]);
     for (const [col, s, dash] of items) {
       c.strokeStyle = col; c.lineWidth = 2; c.setLineDash(dash); c.beginPath(); c.moveTo(x, 14); c.lineTo(x + 18, 14); c.stroke(); c.setLineDash([]);
       c.fillStyle = P.text; c.fillText(s, x + 23, 14); x += c.measureText(s).width + 38;
@@ -804,9 +867,9 @@ function draw2() {
   const [c, W, H] = setup($('cv2')), P = PAL.screen, view = $('an_view').value, ch = $('an_ch').value, j = IDX[ch], w = +$('an_win').value;
   c.fillStyle = PANEL; c.fillRect(0, 0, W, H);
   const Lm = 52, R = 10, T = 6, B = 30, PW = W - Lm - R, PH = H - T - B, [t0, t1] = range(), i0 = lower(t0), i1 = lower(t1 + 1e-6), step = Math.max(1, Math.ceil((i1 - i0) / 1200));
-  $('an_ch').disabled = view === 'err' || view === 'diff'; $('an_win').disabled = view !== 'rate';
+  $('an_ch').disabled = view === 'err' || view === 'diff' || view === 'prof'; $('an_win').disabled = view !== 'rate';
   c.fillStyle = P.bg; c.fillRect(Lm, T, PW, PH);
-  let series = [], xr = [t0, t1], yr = null, xl = '', yl = '', xfmt = null, cap = '', bars = null, dots = null;
+  let series = [], xr = [t0, t1], yr = null, xl = '', yl = '', xfmt = null, cap = '', bars = null, dots = null, prof = null;
   const push = (name, col, f) => { const pts = []; for (let i = i0; i < i1; i += step) { const y = f(i); pts.push([rows[i][0], y == null || !isFinite(y) ? null : y]); } series.push({ name, col, pts }); };
   if (view === 'rate') {
     yl = '기울기 (°C/분)'; push(label(ch), ch === 'PV' ? P.pv : P[ch.toLowerCase()], i => { const s = stat(j, lower(rows[i][0] - w), i + 1); return s && s.n >= 5 ? s.slope : null; });
@@ -826,6 +889,17 @@ function draw2() {
       bars = { cnt, lo: s.min, bw, mean: s.mean, std: s.std }; xr = [s.min - bw, s.max + bw]; yr = [0, Math.max(...cnt) * 1.1];
       cap = `평균 ${s.mean.toFixed(3)},  표준편차 ${fx(s.std, 3)},  범위 ${(s.max - s.min).toFixed(2)} °C,  n = ${s.n}`;
     }
+  } else if (view === 'prof') {                                 // 열전대 좌표(mm)에 따른 온도와 직선 기울기. 커서 A가 있으면 그 시각, 없으면 마지막 줄
+    xl = '위치 (mm)'; yl = '온도 (°C)'; const pos = meta.pos || [], ir = curs[0] != null ? nearest(curs[0]) : rows.length - 1, r = rows[ir], pts = [];
+    for (let i = 0; i < 4; i++) if (pos[i] != null && r && r[4 + i] != null) pts.push([pos[i], r[4 + i], i]);
+    if (pts.length >= 2) {
+      const n = pts.length; let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const [x, y] of pts) { sx += x; sy += y; sxx += x * x; sxy += x * y; }
+      const den = sxx - sx * sx / n, a = den > 1e-9 ? (sxy - sx * sy / n) / den : 0, b = (sy - a * sx) / n, xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+      const px = (Math.max(...xs) - Math.min(...xs)) * 0.1 || 1, py = (Math.max(...ys) - Math.min(...ys)) * 0.2 || 1;
+      xr = [Math.min(...xs) - px, Math.max(...xs) + px]; yr = [Math.min(...ys) - py, Math.max(...ys) + py]; prof = { pts, a, b };
+      const area = cfg.rod_d ? Math.PI * Math.pow(cfg.rod_d / 2000, 2) : null;
+      cap = `${clock(r[0], true)} ${curs[0] != null ? '(커서 A)' : '(마지막)'}   기울기 ${sgn(a, 4)} °C/mm` + (area ? `,   전도 열량 약 ${(cfg.rod_k * area * Math.abs(a) * 1000).toFixed(2)} W  (지름 ${cfg.rod_d} mm, k ${cfg.rod_k})` : '');
+    } else { prof = { pts: [] }; xr = [0, 100]; yr = [0, 100]; cap = '좌표(mm)를 넣은 채널이 둘 이상 읽혀야 함 (실험 탭)'; }
   } else {
     xl = label(ch) + ' (°C)'; yl = '출력 (%)'; dots = []; const s = stat(j, i0, i1);
     for (let i = i0; i < i1; i += Math.max(1, Math.ceil((i1 - i0) / 4000))) if (rows[i][j] != null && rows[i][3] != null) dots.push([rows[i][j], rows[i][3]]);
@@ -837,7 +911,7 @@ function draw2() {
   c.lineWidth = 1; c.textAlign = 'right'; c.textBaseline = 'middle';
   for (const v of nice(yr[0], yr[1], 5)) { const y = Math.round(Y(v)) + 0.5; c.strokeStyle = v === 0 ? '#707070' : P.grid; c.beginPath(); c.moveTo(Lm, y); c.lineTo(W - R, y); c.stroke(); c.fillStyle = P.text; c.fillText(String(+v.toFixed(4)), Lm - 5, y); }
   c.textAlign = 'center'; c.textBaseline = 'top';
-  if (bars || dots) { for (const v of nice(xr[0], xr[1], 7)) { const x = Math.round(X(v)) + 0.5; c.strokeStyle = P.grid; c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + PH); c.stroke(); c.fillStyle = P.text; c.fillText(String(+v.toFixed(3)), x, T + PH + 4); } }
+  if (bars || dots || prof) { for (const v of nice(xr[0], xr[1], 7)) { const x = Math.round(X(v)) + 0.5; c.strokeStyle = P.grid; c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + PH); c.stroke(); c.fillStyle = P.text; c.fillText(String(+v.toFixed(3)), x, T + PH + 4); } }
   else { const ax = timeAxis(t0, t1, PW); xl = ax.unit; for (let t = Math.ceil(t0 / ax.ts) * ax.ts; t <= t1 + 1e-6; t += ax.ts) { const x = Math.round(X(t)) + 0.5; c.strokeStyle = P.grid; c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + PH); c.stroke(); c.fillStyle = P.text; c.fillText(ax.fmt(t), x, T + PH + 4); } }
   c.fillStyle = P.text; c.fillText(xl, Lm + PW / 2, H - 13);
   c.save(); c.translate(10, T + PH / 2); c.rotate(-Math.PI / 2); c.textBaseline = 'middle'; c.fillText(yl, 0, 0); c.restore();
@@ -847,10 +921,15 @@ function draw2() {
     c.strokeStyle = P.cur; c.beginPath(); c.moveTo(X(bars.mean), T); c.lineTo(X(bars.mean), T + PH); c.stroke();
     if (bars.std) { c.setLineDash([4, 3]); for (const k of [-1, 1]) { c.beginPath(); c.moveTo(X(bars.mean + k * bars.std), T); c.lineTo(X(bars.mean + k * bars.std), T + PH); c.stroke(); } c.setLineDash([]); }
   } else if (dots) { c.fillStyle = P.out; for (const [x, y] of dots) c.fillRect(X(x) - 1, Y(y) - 1, 2, 2); }
+  else if (prof) {
+    if (prof.pts.length >= 2) { c.strokeStyle = '#d0d0d0'; c.lineWidth = 1.3; c.setLineDash([5, 3]); c.beginPath(); c.moveTo(X(xr[0]), Y(prof.a * xr[0] + prof.b)); c.lineTo(X(xr[1]), Y(prof.a * xr[1] + prof.b)); c.stroke(); c.setLineDash([]); }
+    c.textAlign = 'left'; c.textBaseline = 'bottom';
+    for (const [x, y, i] of prof.pts) { c.fillStyle = P['t' + (i + 1)]; c.beginPath(); c.arc(X(x), Y(y), 4.5, 0, Math.PI * 2); c.fill(); c.fillStyle = '#fff'; c.fillText('T' + (i + 1) + '  ' + y.toFixed(2), X(x) + 7, Y(y) - 3); }
+  }
   else for (const s of series) { c.strokeStyle = s.col; c.lineWidth = s.name === '최대 − 최소' ? 1.8 : 1.3; c.beginPath(); let pen = false; for (const [x, y] of s.pts) { if (y == null) { pen = false; continue; } if (pen) c.lineTo(X(x), Y(y)); else { c.moveTo(X(x), Y(y)); pen = true; } } c.stroke(); }
   c.restore(); c.lineWidth = 1; c.strokeStyle = '#000'; c.strokeRect(Lm - 0.5, T - 0.5, PW + 1, PH + 1);
   if (series.length > 1) { c.textAlign = 'left'; c.textBaseline = 'middle'; let x = Lm + 8; for (const s of series) { c.fillStyle = s.col; c.fillRect(x, T + 9, 12, 2); c.fillStyle = '#fff'; c.fillText(s.name, x + 16, T + 10); x += c.measureText(s.name).width + 34; } }
-  if (!bars && !dots && !series.some(s => s.pts.some(p => p[1] != null)) || (view === 'hist' && !bars) || (dots && !dots.length)) { c.fillStyle = '#b0b0b0'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('이 구간에는 그릴 값이 없음', Lm + PW / 2, T + PH / 2); }
+  if (!bars && !dots && !prof && !series.some(s => s.pts.some(p => p[1] != null)) || (view === 'hist' && !bars) || (dots && !dots.length) || (prof && prof.pts.length < 2)) { c.fillStyle = '#b0b0b0'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('이 구간에는 그릴 값이 없음', Lm + PW / 2, T + PH / 2); }
   $('ancap').textContent = cap;
 }
 // 프로그램 탭의 작은 계획 곡선
@@ -896,7 +975,7 @@ function ask(text) {                                              // 확인 창 
     d.showModal(); $('dlgno').focus();
   });
 }
-function showData() { rows = V ? V.rows : L.rows; events = V ? V.events : L.events; meta = V ? V.meta : L.meta; sel = null; win = V ? 0 : 1800; curs = [null, null]; FIT = null; shownEv = null; render(); }
+function showData() { rows = V ? V.rows : L.rows; events = V ? V.events : L.events; meta = V ? V.meta : L.meta; sel = null; win = V ? 0 : 1800; curs = [null, null]; FIT = null; MODEL = null; shownEv = null; render(); }
 document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.win != null) { win = +b.dataset.win; sel = null; render(); }
@@ -926,7 +1005,7 @@ $('cmd').onkeydown = e => { if (e.key === 'Enter') sendCmd(); };
 async function addMark() { if (V || lost) return; say(await post('/api/mark', { text: $('mark').value })); $('mark').value = ''; }
 $('bmark').onclick = addMark;
 $('mark').onkeydown = e => { if (e.key === 'Enter') addMark(); };
-const formMeta = () => ({ name: $('m_name').value, sample: $('m_sample').value, memo: $('m_memo').value, labels: [0, 1, 2, 3].map(i => $('m_l' + i).value) });
+const formMeta = () => ({ name: $('m_name').value, sample: $('m_sample').value, memo: $('m_memo').value, labels: [0, 1, 2, 3].map(i => $('m_l' + i).value), pos: [0, 1, 2, 3].map(i => val('m_p' + i)) });
 $('bmeta').onclick = async () => { metaShown = ''; say(await post('/api/meta', formMeta())); };
 $('bnew').onclick = async () => {
   if (!(await ask('지금 파일을 닫고 새 파일에 기록을 시작합니다. 차트와 통계도 처음부터 다시 시작합니다.'))) return;
@@ -943,6 +1022,7 @@ $('brep').onclick = async () => {
   T.push({ title: '응답 특성 (가장 최근 운전 구간)', rows: tb.resp });
   if (tb.ra || tb.rb) T.push({ title: '커서', head: tb.curHead, rows: tb.cur.concat(tb.curd ? [[tb.curd]] : []) });
   if (tb.fit) T.push({ title: '지수 맞춤', rows: tb.fit.filter(r => r[1] !== '') });
+  if (tb.model) T.push({ title: '열 모델', rows: tb.model.filter(r => r[1] !== '') });
   if (cfg.steps.length) T.push({ title: '온도 프로그램 (저장된 것)', head: ['단계', '목표 (°C)', '속도 (°C/분)', '유지 (분)'], rows: cfg.steps.map((s, i) => [i + 1, s.target, s.rate > 0 ? s.rate : '바로', s.hold]).concat([['반복 ' + (cfg.cycles || 1) + '회,  도달 ±' + cfg.tol + ' °C,  ' + (cfg.end_stop ? '끝나면 정지' : '끝나도 유지')]]) });
   say(await post('/api/report', { png: png(), tag: tag(), range: tb.range, tables: T }));
 };
@@ -982,7 +1062,7 @@ $('bpload').onclick = () => { const p = (cfg.presets || {})[$('p_pre').value]; i
 $('bpadd').onclick = async () => { const n = $('p_name').value.trim(); if (!n) return say({ ok: false, msg: '프리셋 이름을 쓰세요' }); const pre = { ...(cfg.presets || {}), [n]: formProg() }; say(await post('/api/cfg', { presets: pre }), '프리셋 저장: ' + n); $('p_name').value = ''; };
 $('bpdel').onclick = async () => { const n = $('p_pre').value; if (!n || !(await ask('프리셋 "' + n + '"을 지웁니다.'))) return; const pre = { ...(cfg.presets || {}) }; delete pre[n]; say(await post('/api/cfg', { presets: pre }), '프리셋 삭제: ' + n); };
 // 경보
-$('basave').onclick = async () => { if (say(await post('/api/cfg', { hi: [0, 1, 2, 3].map(i => val('a_h' + i)), spread: val('a_sp'), auto_stop: $('a_stop').checked }))) { aDirty = false; alarmShown = ''; } };
+$('basave').onclick = async () => { if (say(await post('/api/cfg', { hi: [0, 1, 2, 3].map(i => val('a_h' + i)), spread: val('a_sp'), auto_stop: $('a_stop').checked, stab_tol: val('a_tol'), stab_rate: val('a_rate'), stab_min: val('a_min'), notify: $('a_notify').checked }))) { aDirty = false; alarmShown = ''; } };
 $('back').onclick = async () => say(await post('/api/ack'));
 $('a_beep').onchange = () => { if ($('a_beep').checked && !actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } } };
 // 설정
@@ -1000,7 +1080,10 @@ $('bpid').onclick = async () => {
   for (const id of ['e_kp', 'e_ki', 'e_kd', 'e_out', 'e_src']) $(id).value = '';
 };
 $('btune').onclick = async () => { if (await ask('오토튜닝을 시작합니다. 히터가 켜지고 목표 ' + fx(state.sp, 1) + ' °C 근처에서 온도를 여러 번 오르내립니다. 끝나면 게인이 보드에 저장됩니다.')) send('tune'); };
-$('bhw').onclick = async () => { miscShown = ''; say(await post('/api/cfg', { heater_w: val('e_hw') })); };
+$('bhw').onclick = async () => { miscShown = ''; say(await post('/api/cfg', { heater_w: val('e_hw'), rod_d: val('e_rd'), rod_k: val('e_rk') })); };
+// 모델
+$('bmodel').onclick = () => { MODEL = identify(); render(); };
+$('bmodel0').onclick = () => { MODEL = null; render(); };
 // 지난 기록
 async function loadRecs() {
   recsAt = Date.now();
