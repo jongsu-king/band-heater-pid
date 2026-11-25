@@ -50,10 +50,11 @@ uv run heater_log.py --lang en          # in the browser
 uv run heater_app.py --lang en          # in its own window
 uv run heater_log.py --sim 30 --lang en # practice with a virtual board, no hardware
 packaging/build_mac.sh                  # macOS application (dist/)
+build_windows.bat                       # Windows program and installer (dist/, run on a Windows PC)
 ```
 
 The language can also be changed from the toolbar; the choice is kept in `설정.json` in the record folder.
-Records go to `~/Documents/밴드히터_기록`, four files per experiment: `.csv` (one row per second), `_events.txt`, `_raw.log`, `_meta.json`.
+Records go to `밴드히터_기록` in the Documents folder (`~/Documents/밴드히터_기록`), four files per experiment: `.csv` (one row per second), `_events.txt`, `_raw.log`, `_meta.json`.
 Opening the port resets the Nano, so start the logger before starting a run.
 
 ![Logger](docs/heater_log_screen_en.jpg)
@@ -71,6 +72,17 @@ Opening the port resets the Nano, so start the logger before starting a run.
 | PC alarms | Per-channel high limits and maximum channel spread. They work only while the PC is running and do not replace the protection in the firmware |
 | Records | List of past records; open one in the same tools or overlay it on the live chart |
 | Report | Experiment info, settings, chart, tables and the event log in one HTML file |
+
+### Windows installer
+
+Run `Band-Heater-Logger-<version>-windows-x64-setup.exe`. Python and uv are not needed.
+
+- Windows 10 or 11, 64-bit. The window uses the Microsoft Edge WebView2 Runtime (part of Windows 11 and up-to-date Windows 10); the installer tells you if it is missing.
+- Installs for the current user by default, without administrator rights. It adds a Start menu entry and, if you tick it, a desktop icon. Uninstall from the apps list in Settings; the record folder is kept.
+- The file is not code-signed, so SmartScreen warns on first run: choose `More info` → `Run anyway`.
+- Practice mode (virtual board) is included. Notification-centre alerts are macOS only.
+
+`build_windows.bat` builds it (PyInstaller makes `dist/HeaterLog/`, Inno Setup 6 packs it). The `Windows installer` workflow on GitHub Actions runs that file on a Windows runner, then runs the firmware simulation tests, the self-test with the virtual board, a silent install, the self-test from the installed copy and an uninstall, and keeps the installer as an artifact. Pushing a `v<version>` tag attaches it to a release. It has not been tried yet on a Windows PC with the real board connected.
 
 ## Caution
 

@@ -150,14 +150,30 @@ def stamp_ms():
     return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
 
+SIM_BIN = 'sim_bin.exe' if os.name == 'nt' else 'sim_bin'
+
+
+def docs_dir():
+    """문서 폴더. 윈도우에서는 OneDrive 등으로 옮겨져 있을 수 있어서 시스템에 물어본다."""
+    if os.name == 'nt':
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(260)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 and buf.value:      # 5 = CSIDL_PERSONAL (문서)
+                return buf.value
+        except Exception:
+            pass
+    return os.path.join(os.path.expanduser('~'), 'Documents')
+
+
 def sim_exe(build=False):
     """가상 보드 실행 파일의 위치. 없으면 None. build=True 이면 소스가 있을 때 새로 컴파일한다."""
-    packed = os.path.join(RES, 'sim', 'sim_bin')
+    packed = os.path.join(RES, 'sim', SIM_BIN)
     if os.path.exists(packed):
         return packed
     src = os.path.join(HERE, 'tools', 'sim', 'sim.cpp')
     ino = os.path.join(HERE, 'band_heater_pid', 'band_heater_pid.ino')
-    exe = os.path.join(HERE, 'tools', 'sim', 'sim_bin')
+    exe = os.path.join(HERE, 'tools', 'sim', SIM_BIN)
     if build and os.path.exists(src) and os.path.exists(ino) and (
             not os.path.exists(exe) or os.path.getmtime(exe) < max(os.path.getmtime(src), os.path.getmtime(ino))):
         subprocess.run(['c++', '-std=c++17', '-w', '-x', 'c++', '-I', os.path.join(HERE, 'tools', 'sim', 'mock'),
@@ -1026,7 +1042,7 @@ class SerialLink:
             try:
                 self.ser = serial.Serial(port, 115200, timeout=0.5)
             except Exception as e:
-                why = ('다른 프로그램이 사용 중 (아두이노 시리얼 모니터를 닫으세요)' if 'busy' in str(e).lower()
+                why = ('다른 프로그램이 사용 중 (아두이노 시리얼 모니터를 닫으세요)' if 'busy' in str(e).lower() or 'PermissionError' in str(e)
                        else '포트를 찾을 수 없음' if 'No such file' in str(e) or 'FileNotFound' in str(e) else str(e)[:80])
                 hub.set_conn(False, note='%s 포트를 열 수 없습니다: %s' % (port, why), who=self)
                 self.wait(2)
@@ -1106,7 +1122,7 @@ class SimLink:
             self.hub.set_conn(False, note='가상 보드를 켜지 못했습니다: %s' % e, who=self)
             return
         self.p = subprocess.Popen([exe, 'board', str(self.speed)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  text=True, bufsize=1)
+                                  text=True, bufsize=1, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))    # 윈도우에서 콘솔 창이 뜨지 않게
         self.hub.set_conn(True, '가상 보드 %g배속' % self.speed, who=self)
         threading.Thread(target=self.poll, daemon=True).start()
         for line in self.p.stdout:
@@ -1233,6 +1249,10 @@ def make_handler(hub, token):
     return H
 
 
+class Server(ThreadingHTTPServer):
+    allow_reuse_address = os.name != 'nt'      # 윈도우에서는 이 옵션이 다른 프로그램이 쓰는 포트에도 붙게 해서, 두 번 켜면 화면이 섞인다
+
+
 def run_window(url, hub, selftest=None):
     """브라우저 대신 전용 창에 화면을 띄운다 (응용프로그램으로 실행할 때). 창을 닫으면 끝난다."""
     import webview
@@ -1273,7 +1293,7 @@ def run_window(url, hub, selftest=None):
 def main(window=False):
     ap = argparse.ArgumentParser(description='밴드 히터 PID 컨트롤러 기록 프로그램')
     ap.add_argument('--port', default='', help='시리얼 포트 (생략하면 자동으로 찾음)')
-    ap.add_argument('--out', default=os.path.join(os.path.expanduser('~'), 'Documents', '밴드히터_기록'), help='기록 폴더')
+    ap.add_argument('--out', default=os.path.join(docs_dir(), '밴드히터_기록'), help='기록 폴더')
     ap.add_argument('--name', default='', help='실험 이름 (파일 이름에 붙음)')
     ap.add_argument('--sim', type=float, nargs='?', const=1.0, metavar='배속', help='보드 없이 가상 보드로 실행')
     ap.add_argument('--http-port', type=int, default=8765)
@@ -1298,7 +1318,7 @@ def main(window=False):
     srv = None
     for port in range(a.http_port, a.http_port + 20):
         try:
-            srv = ThreadingHTTPServer(('127.0.0.1', port), make_handler(hub, token))
+            srv = Server(('127.0.0.1', port), make_handler(hub, token))
             break
         except OSError:
             continue
@@ -1310,6 +1330,12 @@ def main(window=False):
         try:
             subprocess.Popen(['caffeinate', '-i', '-w', str(os.getpid())])
         except OSError:
+            pass
+    elif os.name == 'nt':                  # 윈도우도 같게: 이 스레드가 살아 있는 동안 절전으로 들어가지 않음
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)      # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        except Exception:
             pass
     for sig in (signal.SIGTERM, getattr(signal, 'SIGHUP', None)):     # 터미널 창을 닫아도 파일을 정리하고 끝냄
         if sig is not None:

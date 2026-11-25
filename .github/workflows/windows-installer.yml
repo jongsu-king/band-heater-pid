@@ -1,0 +1,152 @@
+# Builds the Windows installer on a Windows runner with build_windows.bat (PyInstaller + Inno Setup),
+# then checks it: firmware simulation tests, the program's self-test with the virtual board,
+# a silent install, the self-test again from the installed copy, and a silent uninstall.
+# The installer is kept as a workflow artifact. A v* tag also attaches it to a GitHub Release.
+name: Windows installer
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+    paths:
+      - "heater_app.py"
+      - "heater_log.py"
+      - "heater_log.html"
+      - "build_windows.bat"
+      - "band_heater_pid/**"
+      - "tools/sim/**"
+      - "packaging/**"
+      - ".github/workflows/windows-installer.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Tools
+        run: python -m pip install --upgrade pip uv
+
+      - name: Version
+        shell: bash
+        run: |
+          V=$(python -c "import heater_log; print(heater_log.VERSION)")
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "version $V"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF_NAME#v}" != "$V" ]]; then
+            echo "tag $GITHUB_REF_NAME does not match VERSION $V in heater_log.py"; exit 1; fi
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { Write-Error 'ISCC.exe not found'; exit 1 }
+
+      - name: Build (build_windows.bat)
+        shell: cmd
+        run: call build_windows.bat
+
+      - name: Firmware simulation tests (Windows build of the virtual board)
+        shell: bash
+        run: |
+          test -f tools/sim/sim_bin.exe
+          tools/sim/sim_bin.exe | tail -n 1
+          tools/sim/sim_bin.exe 3 | tail -n 1
+          tools/sim/sim_bin.exe > /dev/null && tools/sim/sim_bin.exe 3 > /dev/null
+
+      - name: Windows-specific code paths
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, heater_log
+          from http.server import BaseHTTPRequestHandler
+          d = heater_log.docs_dir()
+          print('documents folder:', d)
+          assert os.path.isabs(d)
+          assert heater_log.sim_exe() and heater_log.sim_exe().endswith('sim_bin.exe')
+          a = heater_log.Server(('127.0.0.1', 0), BaseHTTPRequestHandler)
+          try:
+              heater_log.Server(('127.0.0.1', a.server_address[1]), BaseHTTPRequestHandler)
+          except OSError as e:
+              print('second server on the same port is refused:', e)
+          else:
+              raise SystemExit('a second server could bind the same port')
+          PY
+
+      - name: Self-test (built program, virtual board)
+        shell: pwsh
+        run: |
+          $exe = "dist\HeaterLog\HeaterLog.exe"
+          if (-not (Test-Path $exe)) { Write-Error "$exe not built"; exit 1 }
+          if (-not (Test-Path "dist\HeaterLog\_internal\sim\sim_bin.exe")) { Write-Error 'virtual board not bundled'; exit 1 }
+          $p = Start-Process $exe -ArgumentList '--sim','30','--lang','en','--out',"$env:RUNNER_TEMP\rec-built",'--selftest',"$PWD\dist\selftest-windows.json" -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); Write-Error 'self-test timed out'; exit 1 }
+          python packaging\windows\check_selftest.py dist\selftest-windows.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem "$env:RUNNER_TEMP\rec-built" -Recurse | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+
+      - name: Install, self-test the installed copy, uninstall
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "dist\Band-Heater-Logger-$env:VERSION-windows-x64-setup.exe"
+          Write-Host ("installer: {0}  {1:N1} MiB" -f $setup.Name, ($setup.Length / 1MB))
+          $dir = "C:\heaterlog-test"
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',"/DIR=$dir","/LOG=$env:RUNNER_TEMP\install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.log" -Tail 40; exit 1 }
+          $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Band Heater PID Logger.lnk"
+          if (-not (Test-Path $lnk)) { Write-Error 'Start menu shortcut missing'; exit 1 }
+          $reg = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{AED7B226-0390-4D06-9414-BBF97850FE7D}_is1'
+          Write-Host "registered: $($reg.DisplayName) $($reg.DisplayVersion) by $($reg.Publisher)"
+          if ($reg.DisplayVersion -ne $env:VERSION) { Write-Error 'wrong version registered'; exit 1 }
+          $q = Start-Process "$dir\HeaterLog.exe" -ArgumentList '--sim','30','--lang','en','--out',"$env:RUNNER_TEMP\rec-installed",'--selftest',"$PWD\dist\selftest-windows-installed.json" -PassThru
+          if (-not $q.WaitForExit(120000)) { $q.Kill(); Write-Error 'self-test (installed) timed out'; exit 1 }
+          python packaging\windows\check_selftest.py dist\selftest-windows-installed.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $u = Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($u.ExitCode -ne 0) { exit 1 }
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\HeaterLog.exe") { Write-Error 'program still there after uninstall'; exit 1 }
+          if (Test-Path $lnk) { Write-Error 'shortcut still there after uninstall'; exit 1 }
+          Write-Host 'install, self-test and uninstall passed'
+
+      - name: Checksum
+        shell: bash
+        run: |
+          cd dist
+          sha256sum Band-Heater-Logger-*-windows-x64-setup.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer
+          if-no-files-found: error
+          path: |
+            dist/*-windows-x64-setup.exe
+            dist/SHA256SUMS.txt
+            dist/selftest-*.json
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-installer
+          path: artifacts
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "Band Heater PID Logger ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
+            artifacts/*-windows-x64-setup.exe artifacts/SHA256SUMS.txt

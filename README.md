@@ -30,7 +30,7 @@
 | `docs/` | 핀맵, 배선, 통 치수도면 (PDF 7쪽) |
 | `case/` | 통 STL, 밤부 스튜디오 프로젝트 |
 | `heater_log.py`, `heater_log.html` | PC 기록 프로그램 |
-| `heater_app.py`, `packaging/` | 기록 프로그램을 응용프로그램으로 묶는 것 |
+| `heater_app.py`, `packaging/`, `build_windows.bat` | 기록 프로그램을 응용프로그램(맥)과 설치 파일(윈도우)로 묶는 것 |
 | `tools/` | 그림·문서·모형을 만드는 스크립트, PC 모의 시험 |
 | `band_heater_guide.html` | 조립과 사용 안내서 |
 
@@ -74,9 +74,10 @@ uv run heater_app.py             # 전용 창
 uv run heater_log.py --sim 30    # 보드 없이 가상 보드로 연습
 uv run heater_log.py --lang en   # 영어 화면 (화면 오른쪽 위에서도 바꿀 수 있음)
 packaging/build_mac.sh           # 맥용 응용프로그램 (dist/)
+build_windows.bat                # 윈도우용 프로그램과 설치 파일 (dist/, 윈도우 PC에서 실행)
 ```
 
-기록은 `~/Documents/밴드히터_기록`에 실험마다 네 파일로 남는다: `.csv`(1초마다 한 줄), `_events.txt`, `_raw.log`, `_meta.json`.
+기록은 문서 폴더의 `밴드히터_기록`(`~/Documents/밴드히터_기록`)에 실험마다 네 파일로 남는다: `.csv`(1초마다 한 줄), `_events.txt`, `_raw.log`, `_meta.json`.
 포트를 열면 나노가 리셋되므로 프로그램을 먼저 켜고 운전을 시작한다. 연결한 뒤 보드의 부팅 신호가 올 때까지 수신한 데이터는 무시한다(드라이버 버퍼에 남은 데이터가 반복해서 들어온 적이 있다).
 
 ![기록 프로그램 화면](docs/heater_log_screen.jpg)
@@ -105,7 +106,16 @@ packaging/build_mac.sh           # 맥용 응용프로그램 (dist/)
 
 화면에서 바꾼 설정(프로그램 단계, 경보 한계, 언어)은 기록 폴더의 `설정.json`에 남는다.
 
-윈도우용 exe는 윈도우 PC에서 `build_windows.bat`으로 만든다. 이 스크립트는 실행해 보지 않았다.
+### 윈도우 설치 파일
+
+`Band-Heater-Logger-<버전>-windows-x64-setup.exe`를 실행하면 설치된다. 파이썬이나 uv는 필요 없다.
+
+- 윈도우 10·11 (64비트). 창은 Microsoft Edge WebView2 런타임으로 띄운다(윈도우 11과 최신 윈도우 10에 들어 있음). 없으면 설치가 끝날 때 알려 준다.
+- 기본은 지금 사용자용 설치라 관리자 권한이 필요 없다. 시작 메뉴에 `밴드 히터 PID 기록`이 생기고, 바탕화면 아이콘은 선택이다. 제거는 설정의 앱 목록에서 한다. 기록 폴더는 제거해도 남는다.
+- 서명하지 않은 파일이라 처음 실행할 때 SmartScreen 경고가 뜬다. `추가 정보` → `실행`을 누른다.
+- 연습 모드(가상 보드)가 들어 있어 보드 없이도 화면을 써 볼 수 있다. 알림 센터 알림은 맥에서만 된다.
+
+설치 파일은 `build_windows.bat`이 만든다(PyInstaller로 `dist/HeaterLog/`를 만들고 Inno Setup 6으로 묶음). GitHub Actions의 `Windows installer` 워크플로가 윈도우 러너에서 이 파일을 돌린 뒤, 펌웨어 모의 시험, 가상 보드 자동 점검, 조용한 설치, 설치본 자동 점검, 제거까지 확인하고 설치 파일을 산출물로 남긴다. `v<버전>` 태그를 올리면 릴리스에 첨부한다. 실물 보드를 연결한 윈도우 PC에서는 아직 확인하지 않았다.
 
 ## 주의
 

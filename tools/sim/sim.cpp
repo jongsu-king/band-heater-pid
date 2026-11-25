@@ -84,6 +84,43 @@ static int three(){
 }
 // ---- 가상 보드: 펌웨어를 그대로 돌리면서 표준입력을 시리얼 입력으로, 시리얼 출력을 표준출력으로 잇는다 ----
 //   사용: sim_bin board [배속]   (heater_log.py --sim 이 이 방식으로 실행함)
+#ifdef _WIN32
+// 윈도우: 표준입력(파이프)에 와 있는 만큼만 읽는다. windows.h 는 Arduino.h 의 INPUT, boolean 과 이름이 겹쳐서
+// 쓰는 함수 다섯 개만 직접 선언한다.
+#include <chrono>
+struct _OVERLAPPED;
+extern "C" {
+  __declspec(dllimport) void* __stdcall GetStdHandle(unsigned long);
+  __declspec(dllimport) unsigned long __stdcall GetFileType(void*);
+  __declspec(dllimport) int __stdcall PeekNamedPipe(void*,void*,unsigned long,unsigned long*,unsigned long*,unsigned long*);
+  __declspec(dllimport) int __stdcall ReadFile(void*,void*,unsigned long,unsigned long*,struct _OVERLAPPED*);
+  __declspec(dllimport) void __stdcall Sleep(unsigned long);
+}
+static int board(double speed){
+  if(speed<=0) speed=1;
+  void* in=GetStdHandle((unsigned long)-10);             // STD_INPUT_HANDLE
+  bool piped=GetFileType(in)==3;                         // FILE_TYPE_PIPE. 콘솔에서 직접 켜면 입력 없이 돈다
+  setup();
+  auto t0=std::chrono::steady_clock::now(); double simMs=0;
+  for(;;){
+    if(piped){
+      unsigned long avail=0,n=0; char buf[256];
+      if(!PeekNamedPipe(in,0,0,0,&avail,0)) return 0;    // 입력이 닫히면(기록 프로그램 종료) 끝냄
+      while(avail>0){
+        if(!ReadFile(in,buf,avail<sizeof buf?avail:(unsigned long)sizeof buf,&n,0)||n==0) return 0;
+        for(unsigned long i=0;i<n;i++) Serial.in.push_back(buf[i]);
+        avail-=n;
+      }
+    }
+    run(100); simMs+=100;
+    if(!Serial.out.empty()){ fputs(Serial.out.c_str(),stdout); fflush(stdout); Serial.out.clear(); }
+    // Sleep 은 15 ms 단위로 길어질 수 있어서, 정해진 만큼 쉬지 않고 실제 시간보다 앞선 만큼만 쉰다
+    double ahead=simMs/speed-std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();
+    if(ahead>=1) Sleep((unsigned long)ahead);
+    else if(ahead<-1000){ t0=std::chrono::steady_clock::now(); simMs=0; }   // 크게 밀렸으면 몰아서 따라잡지 않고 다시 맞춤
+  }
+}
+#else
 #include <unistd.h>
 #include <fcntl.h>
 static int board(double speed){
@@ -99,6 +136,7 @@ static int board(double speed){
     usleep((useconds_t)(100000.0/speed));
   }
 }
+#endif
 int main(int argc,char** argv){
   int csp[4]={10,9,8,7}; for(int i=0;i<4;i++){ chip[i]=Chip(); chip[i].cs=csp[i]; chip[i].present=true; chip[i].temp=25+ofs[i]; }
   if(argc>1 && !strcmp(argv[1],"board")){ Wire.present[LCD2_I2C_ADDR]=Wire.present[LCD3_I2C_ADDR]=true; return board(argc>2?atof(argv[2]):1.0); }
