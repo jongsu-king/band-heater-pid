@@ -75,7 +75,7 @@ Opening the port resets the Nano, so start the logger before starting a run.
 
 ### Windows installer
 
-Run `Band-Heater-Logger-<version>-windows-x64-setup.exe`. Python and uv are not needed.
+Download `Band-Heater-Logger-<version>-windows-x64-setup.exe` from the [releases](https://github.com/jongsu-king/band-heater-pid/releases/latest) and run it. Python and uv are not needed. The steps, what gets installed, command-line options and troubleshooting are in [docs/INSTALL.en.md](docs/INSTALL.en.md).
 
 - Windows 10 or 11, 64-bit. The window uses the Microsoft Edge WebView2 Runtime (part of Windows 11 and up-to-date Windows 10); the installer tells you if it is missing.
 - Installs for the current user by default, without administrator rights. It adds a Start menu entry and, if you tick it, a desktop icon. Uninstall from the apps list in Settings; the record folder is kept.

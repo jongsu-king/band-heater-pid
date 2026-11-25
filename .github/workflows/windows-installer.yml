@@ -1,7 +1,9 @@
 # Builds the Windows installer on a Windows runner with build_windows.bat (PyInstaller + Inno Setup),
 # then checks it: firmware simulation tests, the program's self-test with the virtual board,
 # a silent install, the self-test again from the installed copy, and a silent uninstall.
-# The installer is kept as a workflow artifact. A v* tag also attaches it to a GitHub Release.
+# The installer is kept as a workflow artifact, with BUILD-INFO.txt (tool versions, file list, hashes) and the
+# release notes (docs/release-notes/<version>.md with this build's values filled in).
+# A v* tag publishes them as a GitHub Release.
 name: Windows installer
 on:
   push:
@@ -15,6 +17,7 @@ on:
       - "band_heater_pid/**"
       - "tools/sim/**"
       - "packaging/**"
+      - "docs/release-notes/**"
       - ".github/workflows/windows-installer.yml"
   workflow_dispatch:
 permissions:
@@ -143,6 +146,22 @@ jobs:
           sha256sum Band-Heater-Logger-*-windows-x64-setup.exe > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      - name: Build details and release notes
+        shell: cmd
+        run: |
+          uv run --with pyinstaller --with "pywebview>=5" --with "pyserial>=3.5" python packaging\windows\build_info.py
+          if errorlevel 1 exit /b 1
+          python packaging\release_notes.py
+          if errorlevel 1 exit /b 1
+
+      - name: Show the release notes
+        shell: bash
+        run: |
+          grep -q "$(cut -d' ' -f1 dist/SHA256SUMS.txt)" dist/BUILD-INFO.txt
+          grep -q "$(cut -d' ' -f1 dist/SHA256SUMS.txt)" dist/RELEASE-NOTES.md
+          cat dist/RELEASE-NOTES.md >> "$GITHUB_STEP_SUMMARY"
+          wc -c dist/RELEASE-NOTES.md dist/BUILD-INFO.txt
+
       - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
@@ -150,6 +169,8 @@ jobs:
           path: |
             dist/*-windows-x64-setup.exe
             dist/SHA256SUMS.txt
+            dist/BUILD-INFO.txt
+            dist/RELEASE-NOTES.md
             dist/selftest-*.json
 
   release:
@@ -163,13 +184,17 @@ jobs:
         with:
           name: windows-installer
           path: artifacts
-      - name: Attach to the release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --title "Band Heater PID Logger ${GITHUB_REF_NAME#v}" --generate-notes
+          cd artifacts
+          title="Band Heater PID Logger ${GITHUB_REF_NAME#v} (Windows installer)"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
+              *-windows-x64-setup.exe SHA256SUMS.txt BUILD-INFO.txt
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file RELEASE-NOTES.md
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$title" \
+              --notes-file RELEASE-NOTES.md *-windows-x64-setup.exe SHA256SUMS.txt BUILD-INFO.txt
           fi
-          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
-            artifacts/*-windows-x64-setup.exe artifacts/SHA256SUMS.txt

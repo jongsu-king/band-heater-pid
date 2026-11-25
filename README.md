@@ -108,7 +108,7 @@ build_windows.bat                # 윈도우용 프로그램과 설치 파일 (d
 
 ### 윈도우 설치 파일
 
-`Band-Heater-Logger-<버전>-windows-x64-setup.exe`를 실행하면 설치된다. 파이썬이나 uv는 필요 없다.
+[릴리스](https://github.com/jongsu-king/band-heater-pid/releases/latest)에서 `Band-Heater-Logger-<버전>-windows-x64-setup.exe`를 받아 실행하면 설치된다. 파이썬이나 uv는 필요 없다. 설치 순서, 설치되는 것, 명령줄 옵션, 문제 해결은 [docs/INSTALL.md](docs/INSTALL.md)에 자세히 있다.
 
 - 윈도우 10·11 (64비트). 창은 Microsoft Edge WebView2 런타임으로 띄운다(윈도우 11과 최신 윈도우 10에 들어 있음). 없으면 설치가 끝날 때 알려 준다.
 - 기본은 지금 사용자용 설치라 관리자 권한이 필요 없다. 시작 메뉴에 `밴드 히터 PID 기록`이 생기고, 바탕화면 아이콘은 선택이다. 제거는 설정의 앱 목록에서 한다. 기록 폴더는 제거해도 남는다.
