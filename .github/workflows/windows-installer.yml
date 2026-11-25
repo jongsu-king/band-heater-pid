@@ -113,6 +113,29 @@ jobs:
           if (Test-Path $lnk) { Write-Error 'shortcut still there after uninstall'; exit 1 }
           Write-Host 'install, self-test and uninstall passed'
 
+      - name: Install in Korean, check the shortcut name, uninstall
+        shell: pwsh
+        run: |
+          # On Korean Windows the installer runs in Korean by itself; /LANG=ko forces it here.
+          # The Korean shortcut name also shows that the Korean text in installer.iss survived the build.
+          $setup = Get-ChildItem "dist\Band-Heater-Logger-$env:VERSION-windows-x64-setup.exe"
+          $dir = "C:\heaterlog-test-ko"
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/LANG=ko','/TASKS=desktopicon',"/DIR=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { exit 1 }
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+          $desk = [Environment]::GetFolderPath('Desktop')
+          foreach ($lnk in "$menu\밴드 히터 PID 기록.lnk", "$desk\밴드 히터 PID 기록.lnk") {
+            if (-not (Test-Path -LiteralPath $lnk)) {
+              Get-ChildItem $menu, $desk -Filter *.lnk | Select-Object FullName | Out-String | Write-Host
+              Write-Error "missing: $lnk"; exit 1
+            }
+          }
+          $u = Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($u.ExitCode -ne 0) { exit 1 }
+          Start-Sleep -Seconds 3
+          if ((Test-Path "$dir\HeaterLog.exe") -or (Test-Path -LiteralPath "$menu\밴드 히터 PID 기록.lnk") -or (Test-Path -LiteralPath "$desk\밴드 히터 PID 기록.lnk")) { Write-Error 'left behind after uninstall'; exit 1 }
+          Write-Host 'Korean install: Start menu and desktop shortcuts created, uninstall passed'
+
       - name: Checksum
         shell: bash
         run: |
