@@ -49,6 +49,37 @@ def webview2_version():
     return ''
 
 
+def inno_version(iscc):
+    """Inno Setup 의 버전. 설치 등록 정보에서 읽고, 없으면 빈 스크립트를 컴파일해 컴파일러가 찍는 줄에서 읽는다."""
+    try:
+        import winreg
+        for root, path in ((winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1'),
+                           (winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1'),
+                           (winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1')):
+            try:
+                with winreg.OpenKey(root, path) as k:
+                    v = str(winreg.QueryValueEx(k, 'DisplayVersion')[0]).strip()
+                    if v and v != '0.0.0.0':
+                        return v
+            except OSError:
+                pass
+    except ImportError:
+        return ''
+    if not os.path.exists(iscc):
+        return ''
+    try:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            iss = os.path.join(tmp, 'v.iss')
+            with open(iss, 'w', encoding='ascii') as f:
+                f.write('[Setup]\nAppName=v\nAppVersion=1\nDefaultDirName={tmp}\\v\nOutputDir=%s\n' % tmp)
+            out = subprocess.run([iscc, iss], capture_output=True, text=True, timeout=120).stdout
+        m = re.search(r'Compiler engine version: Inno Setup ([\d.]+)', out)
+        return m.group(1) if m else ''
+    except Exception:
+        return ''
+
+
 def main():
     ver = heater_log.VERSION
     setup = os.path.join(DIST, 'Band-Heater-Logger-%s-windows-x64-setup.exe' % ver)
@@ -74,7 +105,7 @@ def main():
         'os': platform.platform(),
         'python': platform.python_version() + ' ' + platform.architecture()[0],
         'gxx': first_line(['g++', '--version']),
-        'inno_setup': first_line(['powershell', '-NoProfile', '-Command', "(Get-Item '%s').VersionInfo.ProductVersion" % iscc]) if os.path.exists(iscc) else '',
+        'inno_setup': inno_version(iscc),
         'webview2_on_build_machine': webview2_version(),
         'packages': pkgs,
         'installer': {'name': os.path.basename(setup), 'bytes': os.path.getsize(setup), 'sha256': sha256(setup)} if os.path.exists(setup) else None,
@@ -106,7 +137,8 @@ def main():
     add('  HeaterLog.exe SHA-256  %s' % (info['program']['exe_sha256'] or '-'))
     add('  virtual board bundled  %s' % ('yes' if info['program']['virtual_board'] else 'no'))
     add('')
-    add('Python packages in the build environment')
+    add('Python packages in the build environment (pywebview, pyserial and what they need go into the program;')
+    add('PyInstaller and its helpers build it; the rest belongs to the build machine and is not part of the program)')
     for name, v in pkgs:
         add('  %-28s %s' % (name, v))
     add('')

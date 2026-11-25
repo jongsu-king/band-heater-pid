@@ -16,8 +16,8 @@ sys.path.insert(0, ROOT)
 import heater_log
 
 REPO = os.environ.get('GITHUB_REPOSITORY', 'jongsu-king/band-heater-pid')
-SHOWN = ('pyinstaller', 'pywebview', 'pyserial', 'pythonnet', 'clr-loader', 'clr_loader', 'cffi', 'bottle', 'proxy-tools', 'proxy_tools',
-         'typing-extensions', 'typing_extensions', 'pyinstaller-hooks-contrib', 'pefile', 'pywin32-ctypes', 'altgraph', 'pycparser')
+APP_PKGS = ('pywebview', 'pyserial', 'pythonnet', 'clr-loader', 'cffi', 'pycparser', 'bottle', 'proxy-tools', 'typing-extensions')    # 프로그램에 들어가는 것
+TOOL_PKGS = ('pyinstaller', 'pyinstaller-hooks-contrib', 'altgraph', 'pefile', 'pywin32-ctypes')                                       # 묶는 데만 쓰는 것
 
 
 def mib(n):
@@ -41,11 +41,7 @@ def files_table(info, ko):
 def build_table(info, ko):
     p = info['program']
     pk = dict((k.replace('_', '-'), v) for k, v in info.get('packages', []))
-    shown = []
-    for name in SHOWN:
-        n = name.replace('_', '-')
-        if n in pk and n not in [s[0] for s in shown]:
-            shown.append((n, pk[n]))
+    pick = lambda names: ', '.join('%s %s' % (n, pk[n]) for n in names if n in pk) or '-'
     commit = info.get('commit') or ''
     rows = [
         ('프로그램 버전' if ko else 'Program version', info['version']),
@@ -55,7 +51,8 @@ def build_table(info, ko):
         ('빌드 시각' if ko else 'Built', info.get('built_utc') or '-'),
         ('빌드 러너' if ko else 'Build runner', ' / '.join(x for x in (info.get('runner_image'), info.get('os')) if x) or '-'),
         ('Python', info.get('python') or '-'),
-        ('묶인 패키지' if ko else 'Bundled packages', ', '.join('%s %s' % s for s in shown) or '-'),
+        ('프로그램에 들어간 패키지 (pywebview, pyserial과 그 의존 패키지)' if ko else 'Packages in the program (pywebview, pyserial and their dependencies)', pick(APP_PKGS)),
+        ('묶는 도구' if ko else 'Packaging tools', pick(TOOL_PKGS)),
         ('가상 보드 컴파일러' if ko else 'Compiler for the virtual board', info.get('gxx') or '-'),
         ('Inno Setup', info.get('inno_setup') or '-'),
         ('러너의 WebView2 런타임' if ko else 'WebView2 Runtime on the runner', info.get('webview2_on_build_machine') or '-'),
